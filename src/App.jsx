@@ -14542,69 +14542,52 @@ export default function ReelStudioV8() {
   // (남겨두지 않음)
 
   // 노드 → SVG foreignObject → Image → Canvas → PNG Blob
-  async function dlCaptureNode(node) {
+  // 노드 → Canvas (html2canvas 사용). 실제 렌더링을 그대로 캡처하므로
+  // 폰트 깨짐이 없고, 오염(tainted) 문제도 useCORS 옵션으로 회피한다.
+  // onclone: 캡처용 복제본에서 애니메이션(fadeUp/fadeIn 등)을 즉시 완료
+  //          상태로 고정 → 글자가 제자리에 놓여 겹침/깨짐 방지.
+  async function dlCaptureCanvas(node) {
+    if (typeof window.html2canvas !== 'function') {
+      throw new Error('html2canvas 미로드');
+    }
     const rect = node.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width));
     const h = Math.max(1, Math.round(rect.height));
-    // ⚠️ 원본 DOM은 절대 건드리지 않음. clone을 만들기 전에 원본의 computed style을 읽어 clone에 적용.
-    // 원본과 clone을 element 단위로 매칭하여 inline style 복사
-    const clone = node.cloneNode(true);
-    const srcEls = [node, ...node.querySelectorAll('*')];
-    const dstEls = [clone, ...clone.querySelectorAll('*')];
-    const n = Math.min(srcEls.length, dstEls.length);
-    for (let i = 0; i < n; i++) {
-      try {
-        const cs = window.getComputedStyle(srcEls[i]);
-        let s = '';
-        for (let j = 0; j < cs.length; j++) {
-          const p = cs[j];
-          s += `${p}:${cs.getPropertyValue(p)};`;
-        }
-        s += "font-family:'Apple SD Gothic Neo','Noto Sans KR','Malgun Gothic',sans-serif !important;";
-        dstEls[i].setAttribute('style', s);
-      } catch (e) {}
-    }
+    return await window.html2canvas(node, {
+      backgroundColor: '#ffffff',
+      scale: 2,
+      useCORS: true,
+      allowTaint: false,
+      logging: false,
+      width: w,
+      height: h,
+      windowWidth: document.documentElement.scrollWidth,
+      windowHeight: document.documentElement.scrollHeight,
+      onclone: (clonedDoc) => {
+        try {
+          // 모든 애니메이션/트랜지션 제거 + 최종 상태(불투명·이동 없음)로 고정
+          const style = clonedDoc.createElement('style');
+          style.textContent = `
+            *, *::before, *::after {
+              animation: none !important;
+              transition: none !important;
+              opacity: 1 !important;
+              transform: none !important;
+              filter: none !important;
+            }
+          `;
+          clonedDoc.head.appendChild(style);
+        } catch (e) {}
+      },
+    });
+  }
 
-    const xmlns = 'http://www.w3.org/2000/svg';
-    const xhtml = 'http://www.w3.org/1999/xhtml';
-    const svg = document.createElementNS(xmlns, 'svg');
-    svg.setAttribute('xmlns', xmlns);
-    svg.setAttribute('width', String(w));
-    svg.setAttribute('height', String(h));
-    svg.setAttribute('viewBox', `0 0 ${w} ${h}`);
-    const fo = document.createElementNS(xmlns, 'foreignObject');
-    fo.setAttribute('width', '100%');
-    fo.setAttribute('height', '100%');
-    const wrap = document.createElementNS(xhtml, 'div');
-    wrap.setAttribute('xmlns', xhtml);
-    wrap.appendChild(clone);
-    fo.appendChild(wrap); svg.appendChild(fo);
-
-    const svgStr = new XMLSerializer().serializeToString(svg);
-    const svgBlob = new Blob([svgStr], { type: 'image/svg+xml;charset=utf-8' });
-    const svgUrl = URL.createObjectURL(svgBlob);
-    try {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      await new Promise((resolve, reject) => {
-        img.onload = () => resolve();
-        img.onerror = () => reject(new Error('SVG 로드 실패'));
-        img.src = svgUrl;
-      });
-      const SCALE = 2;
-      const canvas = document.createElement('canvas');
-      canvas.width = w * SCALE; canvas.height = h * SCALE;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
-      ctx.setTransform(SCALE, 0, 0, SCALE, 0, 0);
-      ctx.drawImage(img, 0, 0, w, h);
-      return await new Promise((resolve, reject) => {
-        canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob 실패')), 'image/png');
-      });
-    } finally {
-      URL.revokeObjectURL(svgUrl);
-    }
+  // 노드 → PNG Blob
+  async function dlCaptureNode(node) {
+    const canvas = await dlCaptureCanvas(node);
+    return await new Promise((resolve, reject) => {
+      canvas.toBlob((b) => b ? resolve(b) : reject(new Error('toBlob 실패')), 'image/png');
+    });
   }
 
   // === PNG 6장 자동 다운로드 ===
