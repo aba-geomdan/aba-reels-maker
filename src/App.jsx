@@ -12246,6 +12246,12 @@ JSON 형식으로만 반환:
   ]
 }
 
+**[CTA 슬라이드 톤 — 부담 없이 따뜻하게]**
+마지막 cta 슬라이드의 head/sub는 위 예시를 그대로 쓰지 말고, 주제와 어울리게 **부담 없고 따뜻한 문의 유도**로 새로 써주세요. 부모님이 "상담받아야 하나" 부담 느끼지 않고 "편하게 물어봐도 되겠다" 싶은 톤으로요.
+- 강요·압박 톤 금지: "지금 시작하세요", "지금 결정하세요", "서두르세요" 같은 밀어붙이는 표현 ❌
+- 좋은 방향: "궁금한 점 편하게 물어보세요", "우리 아이 얘기 들려주세요", "작은 고민도 괜찮아요", "부담 없이 문의 주세요" 같은 다정하고 열린 톤 ✅
+- head는 8자×3줄 이내, sub는 부모님께 건네는 따뜻한 한마디 (40자 이내)
+
 JSON만 반환. 다시 강조: 한국어 값들은 영어 직역체가 아닌, 한국 임상 현장에서 실제로 쓰는 자연스러운 한국어여야 합니다.`;
 
   // LLM 호출 (callLLM 헬퍼가 timeout + 에러 처리 담당)
@@ -13825,6 +13831,7 @@ export default function ReelStudioV8() {
 
   // AI 생성 관련 (임상형 6슬라이드)
   const [draftTopic, setDraftTopic] = useState('아이가 자해를 시작할 때 부모가 지켜야 할 골든타임');
+  const [draftContext, setDraftContext] = useState('');
   const [loading, setLoading] = useState(false);
   const [aiContent, setAiContent] = useState(null);
   // 블로그 분할 생성 (슬라이드 만든 후 별도로 호출)
@@ -13941,15 +13948,20 @@ export default function ReelStudioV8() {
     if (!draftTopic.trim()) return;
     setLoading(true);
     setError('');
+    // 주제 + 아이 상황(선택)을 자연스럽게 합쳐 AI에 전달.
+    // 상황 정보가 있으면 AI가 그 아이에 맞는 구체적 내용을 생성.
+    const effectiveTopic = draftContext.trim()
+      ? `${draftTopic.trim()}\n\n[구체적 상황: ${draftContext.trim()}]\n위 상황을 반영하되, 주제의 핵심은 그대로 유지해서 작성해주세요.`
+      : draftTopic;
     try {
-      let result = await generateClinicalContent(draftTopic);
+      let result = await generateClinicalContent(effectiveTopic);
       // 키워드 커버리지 검증 (LLM 키워드 + 사용자 원본 주제 명사) — simple과 동일한 안전망
       let coverage = validateTopicCoverage(result, draftTopic);
       if (!coverage.ok && coverage.missing.length > 0) {
         // 한 번 더 시도 (자동 재생성)
         showToast(`주제 키워드가 빠져서 다시 생성 중... (${coverage.includedCount}/${coverage.total})`, 'info');
         try {
-          result = await generateClinicalContent(draftTopic);
+          result = await generateClinicalContent(effectiveTopic);
           coverage = validateTopicCoverage(result, draftTopic);
         } catch (retryErr) {
           // 재시도 실패해도 첫 결과 그대로 사용
@@ -15298,6 +15310,8 @@ export default function ReelStudioV8() {
                 <AIForm
                   draftTopic={draftTopic}
                   setDraftTopic={setDraftTopic}
+                  draftContext={draftContext}
+                  setDraftContext={setDraftContext}
                   loading={loading}
                   onGenerate={handleAIGenerate}
                   aiContent={aiContent}
@@ -15792,7 +15806,7 @@ function InstaFrameWrapper({ children }) {
 // ────────────────────────────────────────────────
 // 11) AI 임상 생성 폼
 // ────────────────────────────────────────────────
-function AIForm({ draftTopic, setDraftTopic, loading, onGenerate, aiContent, tone, toneKey, setToneKey, onGenerateBlog, blogLoading }) {
+function AIForm({ draftTopic, setDraftTopic, draftContext, setDraftContext, loading, onGenerate, aiContent, tone, toneKey, setToneKey, onGenerateBlog, blogLoading }) {
   return (
     <div>
       <label style={lbl}>주제 (자연어 입력)</label>
@@ -15804,6 +15818,18 @@ function AIForm({ draftTopic, setDraftTopic, loading, onGenerate, aiContent, ton
         disabled={loading}
         style={{ ...inp, opacity: loading ? 0.5 : 1 }}
       />
+      <label style={lbl}>아이 상황 · 강조점 (선택)</label>
+      <textarea
+        value={draftContext}
+        onChange={(e) => setDraftContext(e.target.value)}
+        rows={2}
+        placeholder="예: 36개월, 눈맞춤은 되는데 소리모방이 안 됨. 가정에서 할 수 있는 것 위주로"
+        disabled={loading}
+        style={{ ...inp, opacity: loading ? 0.5 : 1 }}
+      />
+      <div style={{ fontSize: 10.5, color: INK_MUTE, lineHeight: 1.55, marginBottom: 10, padding: '0 2px' }}>
+        아이 나이·특징이나 강조하고 싶은 방향을 적으면, 일반론 대신 그 아이에 맞는 구체적인 내용으로 만들어져요. 비워두면 주제만으로 생성해요.
+      </div>
       <div style={{
         padding: '10px 12px', background: PKL, borderRadius: 8,
         border: `1px solid ${PK}`,
@@ -20042,7 +20068,9 @@ function CompareScene({ scene, sceneIndex, selectedField, setSelectedField, edit
   const rightSize = getHeadSize(scene.rightText, 'compare', 19);
 
   // 인덱스별 변주 2종 (홀=위아래, 짝=좌우)
-  const variant = ((scene.index || 1) - 1) % 2;
+  // ⚠ 좌우분할(variant 1)은 세로 릴스에서 폭이 절반이라 긴 글자가 넘치고
+  //    라벨·VS가 겹치는 문제가 있어, 항상 안정적인 위아래 분할로 고정한다.
+  const variant = 0;
 
   // ━━━━━ 변주 1 (2, 4...) — 좌우 분할
   if (variant === 1) {
