@@ -12256,11 +12256,12 @@ JSON 형식으로만 반환:
     { "kind": "method",     "head": "어떻게 접근하는가 (ABA 용어 그대로)", "sub": "방법 한 줄 (50자 이내)" },
     { "kind": "data",       "head": "구체 수치", "sub": "회기별 진전 데이터로 어떻게 보는지 (50자 이내)" },
     { "kind": "philosophy", "head": "검단ABA가 믿는 것", "sub": "철학 한 줄 (50자 이내)" },
-    { "kind": "cta",        "head": "지금 시작하세요", "sub": "아이의 변화는 한 번의 결정에서 시작됩니다" }
+    { "kind": "cta",        "head": "편하게 물어보세요", "sub": "우리 아이 이야기, 부담 없이 들려주세요" }
   ]
 }
 
 **[CTA 슬라이드 톤 — 부담 없이 따뜻하게]**
+※ 위 cta 예시(편하게 물어보세요)도 그대로 베끼지 말고, 주제에 맞는 새로운 따뜻한 문의 유도 문구를 매번 새로 지으세요.
 마지막 cta 슬라이드의 head/sub는 위 예시를 그대로 쓰지 말고, 주제와 어울리게 **부담 없고 따뜻한 문의 유도**로 새로 써주세요. 부모님이 "상담받아야 하나" 부담 느끼지 않고 "편하게 물어봐도 되겠다" 싶은 톤으로요.
 - 강요·압박 톤 금지: "지금 시작하세요", "지금 결정하세요", "서두르세요" 같은 밀어붙이는 표현 ❌
 - 좋은 방향: "궁금한 점 편하게 물어보세요", "우리 아이 얘기 들려주세요", "작은 고민도 괜찮아요", "부담 없이 문의 주세요" 같은 다정하고 열린 톤 ✅
@@ -13341,7 +13342,7 @@ const DEFAULT_INPUTS = {
       { kind: 'method',     head: '임상 방법', sub: 'ABA 절차로 접근해요' },
       { kind: 'data',       head: '회기별 진전\n데이터', sub: '매 회기마다 측정 가능한 지표로 기록해요' },
       { kind: 'philosophy', head: '검단ABA\n임상 철학', sub: '아이의 신호를 기다립니다' },
-      { kind: 'cta',        head: '지금 시작하세요', sub: '아이의 변화는 한 번의 결정에서 시작됩니다' }
+      { kind: 'cta',        head: '편하게 물어보세요', sub: '우리 아이 이야기, 부담 없이 들려주세요' }
     ]
   },
   checklist: {
@@ -17573,15 +17574,20 @@ function ClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, edi
       <div style={{
         ...fadeIn(150),
         display: 'flex', justifyContent: 'space-between',
-        marginBottom: 14, alignItems: 'baseline',
+        marginBottom: 14, alignItems: 'baseline', gap: 10,
       }}>
         <div style={{
-          fontSize: 9, letterSpacing: '0.25em',
+          fontSize: 9, letterSpacing: '0.18em',
           color: localTone.accentDeep, fontWeight: 700,
+          whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis',
+          flex: '1 1 auto', minWidth: 0,
         }}>
           {stepLabel}
         </div>
-        <div style={{ fontSize: 9, letterSpacing: '0.2em', color: INK_MUTE }}>
+        <div style={{
+          fontSize: 9, letterSpacing: '0.15em', color: INK_MUTE,
+          whiteSpace: 'nowrap', flexShrink: 0,
+        }}>
           {String(scene.index || 1).padStart(2,'0')} / {String(scene.total || 6).padStart(2,'0')} · {(scene.kind || '').toUpperCase()}
         </div>
       </div>
@@ -17745,22 +17751,8 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
       background: theme.bg,
       overflow: 'hidden',
     }}>
-      {/* 배경 거대 워터마크 — 본문과 겹치지 않도록 하단 배치 + 매우 연하게 */}
-      <div style={{
-        position: 'absolute',
-        right: -20,
-        bottom: 340,
-        fontSize: 150,
-        fontWeight: 900,
-        lineHeight: 1,
-        color: tone.accentDeep,
-        opacity: 0.04,
-        letterSpacing: '-0.06em',
-        pointerEvents: 'none',
-        zIndex: 0,
-      }}>
-        ABA
-      </div>
+      {/* 배경 워터마크 제거됨 (본문과 겹침 방지) */}
+
 
       {/* ─── 상단 그룹: 도트 + 메타 + 헤드 + 서브 ─── */}
       <div style={{ position: 'relative', zIndex: 1 }}>
