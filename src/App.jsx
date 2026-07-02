@@ -12085,6 +12085,20 @@ const generateClinicalContent = async (topic) => {
 주제: "${topic}"
 
 ═══════════════════════════════════════════
+**[★ 표현 자유 원칙 — 뻔하지 않게 (최우선 정신) ★]**
+═══════════════════════════════════════════
+이 릴스의 생명은 **신선함**입니다. 아래 규칙(주제 일치·형식)은 지키되, **표현·구성·접근은 대담하게 자유롭게** 가세요. 안전하고 무난한 문장은 실패입니다. 부모님이 "어? 이거 우리 얘긴데" 하고 손을 멈추게 만드는 게 목표예요.
+
+- **클리셰 절대 금지**: "지금 시작하세요", "변화는 한 번의 결정", "우리 아이의 미래", "함께 성장", "포기하지 마세요", "희망을 드립니다" 같은 닳은 표현 전부 ❌. 한 번이라도 어디서 본 듯한 문장이면 다시 쓰세요.
+- **매번 완전히 다른 각도**: 같은 주제라도 접근을 매번 확 바꾸세요. 이번엔 부모의 새벽 감정, 다음엔 아주 구체적인 한 장면, 또 다음엔 의외의 비유나 질문, 또는 아이 시점, 숫자 충격 등 — 절대 같은 공식 반복 금지.
+- **생생한 장면·구체성**: 막연한 감정 서술 ❌ → "밥 먹다 숟가락을 던져요", "현관에서 30분째 신발을 안 신어요"처럼 진짜 장면을 콕. 추상어보다 눈에 보이는 그림.
+- **말 거는 톤**: 설명하지 말고 말을 거세요. "이런 적 있으시죠?", "그 마음 알아요", "혹시…" 같은 공감·질문형 적극 활용. 강의가 아니라 대화.
+- **리듬 자유**: 짧게 툭 끊거나("멈췄어요."), 되묻거나, 반전을 주거나 — 문장 리듬을 다양하게. 6장이 다 똑같은 톤이면 지루해요.
+- **글자 수**: 아래 형식의 권장 글자 수는 '가이드'일 뿐, 표현을 살리기 위해 필요하면 약간 넘겨도 괜찮습니다(단, head는 화면에 들어가야 하니 크게 넘기지 말 것). 자연스러움 > 글자 수 엄수.
+
+**틀은 지키되, 문장은 진짜 사람이 쓴 것처럼 자유롭고 대담하게.**
+
+═══════════════════════════════════════════
 **[★ 최우선 규칙 - 주제 일치 가드레일 ★]**
 ═══════════════════════════════════════════
 
@@ -14666,6 +14680,8 @@ export default function ReelStudioV8() {
     const canvas = document.createElement('canvas');
     canvas.width = W; canvas.height = H;
     const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, W, H);
 
@@ -14679,7 +14695,7 @@ export default function ReelStudioV8() {
       let mimeType = 'video/webm;codecs=vp9';
       if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
       if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
-      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 4_000_000 });
+      recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
       recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
       const stopPromise = new Promise((resolve) => { recorder.onstop = () => resolve(); });
       recorder.start();
