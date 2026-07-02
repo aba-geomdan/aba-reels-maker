@@ -12079,8 +12079,30 @@ const ToneArt = ({ tone, kind, data }) => {
 // ────────────────────────────────────────────────
 // 5) LLM 호출 (v7 그대로 + 양식별 프롬프트 확장)
 // ────────────────────────────────────────────────
-const generateClinicalContent = async (topic) => {
-  const prompt = `당신은 검단ABA 언어행동연구소에서 10년 넘게 아이들을 만나온 1급 언어재활사이자 BCBA 원장입니다. 후배 치료사가 부모님께 어떻게 설명하면 좋을지 물어볼 때 옆자리에서 차근차근 짚어주듯, 이 주제로 **인스타그램 릴스 6장 슬라이드만** 만들어주세요. (블로그·본문은 제외)
+const generateClinicalContent = async (topic, reachMode = false) => {
+  // reachMode(도달형): 4장 · 정보 밀도 낮춤 · 하나의 메시지에 집중
+  // 기본(정보형): 6장 · 임상 데이터·도식 풀세트 (상담 전환용)
+  const slideCountLabel = reachMode ? '4장' : '6장';
+  const modeGuide = reachMode
+    ? `
+═══════════════════════════════════════════
+**[★★ 도달 모드 (4장 · 최우선 적용) ★★]**
+═══════════════════════════════════════════
+이번 릴스는 **최대한 많은 부모에게 퍼지는 것**이 목표입니다. 정보를 빽빽하게 담지 말고, **단 하나의 깨달음**만 남기세요. 릴스는 끝까지 보는 비율(시청 완료율)이 생명이라, 어려우면 이탈합니다.
+
+- **4장만** 만듭니다 (아래 slides 스키마의 4개). 절대 6장으로 늘리지 마세요.
+- 각 슬라이드는 **한 호흡**으로. sub는 한 문장, 가능하면 짧게.
+- **도식·데이터·통계 넣지 마세요.** 숫자·퍼센트·회기 데이터로 설명하려 들지 말 것. 이번엔 감정과 통념 전환이 주인공입니다.
+- 4장의 역할:
+  1) **hook**: 부모가 "어 이거 우리 애 얘긴데" 하고 멈추는 아주 구체적인 한 장면.
+  2) **philosophy**: 부모의 통념을 뒤집는 핵심 메시지 한 방. (예: "더 말 걸어줘야 한다"는 믿음을 뒤집기 → "먼저 말 걸지 마세요, 기다리는 게 치료예요") — 이게 저장·공유를 부르는 심장입니다. 가장 공들여 쓰세요.
+  3) **method**: 그 하나를 집에서 실천하는 법. 아주 간단히, 부담 없이 한 가지 행동만.
+  4) **cta**: 따뜻한 문의 유도.
+- 아래 [표현 자유 원칙]과 [주제 일치 가드레일]은 그대로 지키되, **정보량은 최소로**.
+`
+    : '';
+  const prompt = `당신은 검단ABA 언어행동연구소에서 10년 넘게 아이들을 만나온 1급 언어재활사이자 BCBA 원장입니다. 후배 치료사가 부모님께 어떻게 설명하면 좋을지 물어볼 때 옆자리에서 차근차근 짚어주듯, 이 주제로 **인스타그램 릴스 ${slideCountLabel} 슬라이드만** 만들어주세요. (블로그·본문은 제외)
+${modeGuide}
 
 주제: "${topic}"
 
@@ -12113,7 +12135,7 @@ const generateClinicalContent = async (topic) => {
 예: 주제가 "회기별 진전 데이터" → 키워드: ["회기별 진전 데이터", "마스터리", "데이터 측정"]
 
 **2단계: 슬라이드별 핵심 메시지 요약**
-6슬라이드 각각에 들어갈 **한 줄 핵심 메시지**를 먼저 정하세요. 본문 쓰기 전에.
+${slideCountLabel} 각각에 들어갈 **한 줄 핵심 메시지**를 먼저 정하세요. 본문 쓰기 전에.
 - hook: 후크의 핵심 한 줄 (키워드 1개 이상 포함)
 - reality: 현실 진단의 한 줄 (키워드 1개 이상)
 - method: 방법론의 한 줄 — **주제에 맞는 임상 접근**. ABA 주제면 ABA 절차, 언어재활 주제면 언어재활 절차, 발달 일반 주제면 통합 접근. **주제와 무관한 절차를 끌어다 쓰지 마세요.** (키워드 1개 이상)
@@ -12250,13 +12272,17 @@ JSON 형식으로만 반환:
     "ongoing":  진행중 트라이얼 수 (1~3 사이 정수),
     "paused":   중단 트라이얼 수 (0~2 사이 정수)
   },
-  "slides": [
+  "slides": [${reachMode ? `
+    { "kind": "hook",       "head": "확 끄는 후크 (8자×3줄 안)", "sub": "부모가 멈추는 구체적 한 장면 (40자 이내)" },
+    { "kind": "philosophy", "head": "통념을 뒤집는 한 방", "sub": "부모의 믿음을 뒤집는 핵심 메시지 (50자 이내)" },
+    { "kind": "method",     "head": "집에서 딱 하나", "sub": "부담 없이 실천할 한 가지 (50자 이내)" },
+    { "kind": "cta",        "head": "편하게 물어보세요", "sub": "우리 아이 이야기, 부담 없이 들려주세요" }` : `
     { "kind": "hook",       "head": "확 끄는 후크 (8자×3줄 안)", "sub": "후크 보조 한 줄 (40자 이내)" },
     { "kind": "reality",    "head": "현장에서 자주 보는 모습", "sub": "임상 현실을 짧게 (50자 이내)" },
     { "kind": "method",     "head": "어떻게 접근하는가 (ABA 용어 그대로)", "sub": "방법 한 줄 (50자 이내)" },
     { "kind": "data",       "head": "구체 수치", "sub": "회기별 진전 데이터로 어떻게 보는지 (50자 이내)" },
     { "kind": "philosophy", "head": "검단ABA가 믿는 것", "sub": "철학 한 줄 (50자 이내)" },
-    { "kind": "cta",        "head": "편하게 물어보세요", "sub": "우리 아이 이야기, 부담 없이 들려주세요" }
+    { "kind": "cta",        "head": "편하게 물어보세요", "sub": "우리 아이 이야기, 부담 없이 들려주세요" }`}
   ]
 }
 
@@ -13847,6 +13873,8 @@ export default function ReelStudioV8() {
   // AI 생성 관련 (임상형 6슬라이드)
   const [draftTopic, setDraftTopic] = useState('아이가 자해를 시작할 때 부모가 지켜야 할 골든타임');
   const [draftContext, setDraftContext] = useState('');
+  // 릴스 길이 모드: false=정보형(6장·상담 전환용), true=도달형(4장·널리 퍼뜨리기)
+  const [reachMode, setReachMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [aiContent, setAiContent] = useState(null);
   // 블로그 분할 생성 (슬라이드 만든 후 별도로 호출)
@@ -13969,14 +13997,14 @@ export default function ReelStudioV8() {
       ? `${draftTopic.trim()}\n\n[구체적 상황: ${draftContext.trim()}]\n위 상황을 반영하되, 주제의 핵심은 그대로 유지해서 작성해주세요.`
       : draftTopic;
     try {
-      let result = await generateClinicalContent(effectiveTopic);
+      let result = await generateClinicalContent(effectiveTopic, reachMode);
       // 키워드 커버리지 검증 (LLM 키워드 + 사용자 원본 주제 명사) — simple과 동일한 안전망
       let coverage = validateTopicCoverage(result, draftTopic);
       if (!coverage.ok && coverage.missing.length > 0) {
         // 한 번 더 시도 (자동 재생성)
         showToast(`주제 키워드가 빠져서 다시 생성 중... (${coverage.includedCount}/${coverage.total})`, 'info');
         try {
-          result = await generateClinicalContent(effectiveTopic);
+          result = await generateClinicalContent(effectiveTopic, reachMode);
           coverage = validateTopicCoverage(result, draftTopic);
         } catch (retryErr) {
           // 재시도 실패해도 첫 결과 그대로 사용
@@ -14602,6 +14630,7 @@ export default function ReelStudioV8() {
               transform: none !important;
               filter: none !important;
             }
+            .dl-hide { display: none !important; }
           `;
           clonedDoc.head.appendChild(style);
         } catch (e) {}
@@ -14674,7 +14703,8 @@ export default function ReelStudioV8() {
     setVidBusy(true); setVidProgress(0);
     const total = config.scenes.length;
     const originalIdx = currentSceneIdx;
-    const PER_SCENE_MS = 2500; // 슬라이드당 2.5초
+    const PER_SCENE_MS = 3300; // 슬라이드당 3.3초 (읽기 여유)
+    const LAST_SCENE_EXTRA_MS = 1200; // 마지막 슬라이드(CTA) 여운 추가
 
     // 출력 canvas (1080x1920)
     const W = 1080, H = 1920;
@@ -14746,12 +14776,14 @@ export default function ReelStudioV8() {
 
         // 슬라이드 유지 시간 — 수동 모드이므로 30fps로 프레임을 계속 밀어넣어야
         // 그 시간만큼 영상에 담긴다.
+        const sceneMs = PER_SCENE_MS + (i === total - 1 ? LAST_SCENE_EXTRA_MS : 0);
+        const totalMs = total * PER_SCENE_MS + LAST_SCENE_EXTRA_MS;
         const startWait = Date.now();
-        while (Date.now() - startWait < PER_SCENE_MS) {
+        while (Date.now() - startWait < sceneMs) {
           await new Promise(r => setTimeout(r, 33)); // ~30fps
           if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
           const progressMs = i * PER_SCENE_MS + (Date.now() - startWait);
-          setVidProgress(Math.min(99, Math.round((progressMs / (total * PER_SCENE_MS)) * 100)));
+          setVidProgress(Math.min(99, Math.round((progressMs / totalMs) * 100)));
           if (stopped) break;
         }
       }
@@ -15340,6 +15372,8 @@ export default function ReelStudioV8() {
                   setDraftTopic={setDraftTopic}
                   draftContext={draftContext}
                   setDraftContext={setDraftContext}
+                  reachMode={reachMode}
+                  setReachMode={setReachMode}
                   loading={loading}
                   onGenerate={handleAIGenerate}
                   aiContent={aiContent}
@@ -15834,7 +15868,7 @@ function InstaFrameWrapper({ children }) {
 // ────────────────────────────────────────────────
 // 11) AI 임상 생성 폼
 // ────────────────────────────────────────────────
-function AIForm({ draftTopic, setDraftTopic, draftContext, setDraftContext, loading, onGenerate, aiContent, tone, toneKey, setToneKey, onGenerateBlog, blogLoading }) {
+function AIForm({ draftTopic, setDraftTopic, draftContext, setDraftContext, reachMode, setReachMode, loading, onGenerate, aiContent, tone, toneKey, setToneKey, onGenerateBlog, blogLoading }) {
   return (
     <div>
       <label style={lbl}>주제 (자연어 입력)</label>
@@ -15858,12 +15892,42 @@ function AIForm({ draftTopic, setDraftTopic, draftContext, setDraftContext, load
       <div style={{ fontSize: 10.5, color: INK_MUTE, lineHeight: 1.55, marginBottom: 10, padding: '0 2px' }}>
         아이 나이·특징이나 강조하고 싶은 방향을 적으면, 일반론 대신 그 아이에 맞는 구체적인 내용으로 만들어져요. 비워두면 주제만으로 생성해요.
       </div>
+
+      {/* 릴스 길이 모드 토글 — 정보형(6장) vs 도달형(4장) */}
+      <label style={lbl}>릴스 길이</label>
+      <div style={{ display: 'flex', gap: 8, marginBottom: 10 }}>
+        {[
+          { val: false, title: '정보형 · 6장', desc: '데이터·도식 포함 · 상담 전환용' },
+          { val: true,  title: '도달형 · 4장', desc: '한 메시지 집중 · 널리 퍼뜨리기' },
+        ].map((opt) => {
+          const active = reachMode === opt.val;
+          return (
+            <button
+              key={String(opt.val)}
+              onClick={() => setReachMode(opt.val)}
+              disabled={loading}
+              style={{
+                flex: 1, padding: '10px 10px', borderRadius: 8, textAlign: 'left',
+                background: active ? PKL : '#fff',
+                border: `1.5px solid ${active ? PKD : '#E5E5E7'}`,
+                cursor: loading ? 'wait' : 'pointer', fontFamily: 'inherit',
+                opacity: loading ? 0.6 : 1, transition: 'all 0.12s',
+              }}>
+              <div style={{ fontSize: 12.5, fontWeight: 700, color: active ? PKD : INK, marginBottom: 3 }}>{opt.title}</div>
+              <div style={{ fontSize: 10, color: active ? PKD : INK_MUTE, lineHeight: 1.4 }}>{opt.desc}</div>
+            </button>
+          );
+        })}
+      </div>
+
       <div style={{
         padding: '10px 12px', background: PKL, borderRadius: 8,
         border: `1px solid ${PK}`,
         fontSize: 11, color: PKD, lineHeight: 1.65, marginBottom: 12,
       }}>
-        주제만 적으시면 BCBA · 1급 언어재활사 톤으로 6슬라이드 원고가 빠르게 만들어져요(약 15초). 블로그도 원하시면 슬라이드 생성 후 [＋ 블로그도 만들기] 버튼을 눌러주세요(약 7초).
+        {reachMode
+          ? '도달형은 데이터·도식을 빼고 하나의 메시지에 집중한 4슬라이드로 만들어져요(약 12초). 최대한 많은 부모에게 퍼뜨리고 싶을 때 좋아요.'
+          : '주제만 적으시면 BCBA · 1급 언어재활사 톤으로 6슬라이드 원고가 빠르게 만들어져요(약 15초). 블로그도 원하시면 슬라이드 생성 후 [＋ 블로그도 만들기] 버튼을 눌러주세요(약 7초).'}
       </div>
 
       <button onClick={onGenerate} disabled={loading || !draftTopic.trim()}
@@ -17656,6 +17720,7 @@ function ClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, edi
         {/* 도식 변경 버튼 — 편집 모드 아닐 때만 표시 (인터랙션 충돌 방지) */}
         {!editMode && setSceneToneArtOverride && (
           <button
+            className="dl-hide"
             onClick={(e) => { e.stopPropagation(); setPickerOpen(true); }}
             style={{
               position: 'absolute',
