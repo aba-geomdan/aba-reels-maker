@@ -14690,7 +14690,8 @@ export default function ReelStudioV8() {
     let recorder = null;
 
     try {
-      const stream = canvas.captureStream(30);
+      const stream = canvas.captureStream(0); // 수동 프레임 모드 (흰 프레임 방지)
+      const vTrack = stream.getVideoTracks()[0];
       // 코덱 fallback
       let mimeType = 'video/webm;codecs=vp9';
       if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
@@ -14728,6 +14729,7 @@ export default function ReelStudioV8() {
             else { dh = H; dw = H * ar; dx = (W - dw) / 2; dy = 0; }
             ctx.drawImage(img, dx, dy, dw, dh);
             URL.revokeObjectURL(url);
+            if (vTrack && vTrack.requestFrame) vTrack.requestFrame(); // 그린 직후 프레임 확정
           }
         } catch (e) {
           console.error(`영상 프레임 ${i + 1} 실패:`, e);
@@ -14738,16 +14740,25 @@ export default function ReelStudioV8() {
           ctx.font = "800 80px 'Apple SD Gothic Neo','Noto Sans KR',sans-serif";
           ctx.textAlign = 'center';
           ctx.fillText(`슬라이드 ${i + 1}`, W / 2, H / 2);
+          if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
         }
 
-        // 슬라이드 유지 시간 — captureStream이 현재 프레임을 30fps로 송출
+        // 슬라이드 유지 시간 — 수동 모드이므로 30fps로 프레임을 계속 밀어넣어야
+        // 그 시간만큼 영상에 담긴다.
         const startWait = Date.now();
         while (Date.now() - startWait < PER_SCENE_MS) {
-          await new Promise(r => setTimeout(r, 100));
+          await new Promise(r => setTimeout(r, 33)); // ~30fps
+          if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
           const progressMs = i * PER_SCENE_MS + (Date.now() - startWait);
           setVidProgress(Math.min(99, Math.round((progressMs / (total * PER_SCENE_MS)) * 100)));
           if (stopped) break;
         }
+      }
+
+      // 마지막 프레임 몇 개 더 밀어넣어 안전 마감
+      for (let k = 0; k < 5; k++) {
+        if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
+        await new Promise(r => setTimeout(r, 33));
       }
 
       recorder.stop();
@@ -17717,10 +17728,10 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
   const qualification = scene.qualification || '두 자격(BCBA · 1급 언어재활사) 보유 원장 운영';
   const ctaText = scene.ctaText || '지금 상담 예약';
 
-  // CTA 슬라이드는 디자인 안에 정보가 다 있어서 head/sub를 LLM 출력 그대로 쓰지 않음.
-  // scene.ctaHead/ctaSub로 직접 지정한 경우만 그것 사용. 그 외에는 고정 카피.
-  const cleanHead = scene.ctaHead || '지금 시작하세요';
-  const cleanSub = scene.ctaSub || '아이의 변화는 한 번의 결정에서 시작됩니다';
+  // CTA 문구: AI가 생성한 head/sub를 우선 사용(따뜻한 문의 유도).
+  // ctaHead/ctaSub로 직접 지정한 경우 그것을, 아무것도 없으면 부드러운 기본값.
+  const cleanHead = scene.ctaHead || scene.head || '편하게 물어보세요';
+  const cleanSub = scene.ctaSub || scene.sub || '우리 아이 이야기, 부담 없이 들려주세요';
   const headSize = getHeadSize(cleanHead, 'cta', 24);
 
   return (
@@ -17734,16 +17745,16 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
       background: theme.bg,
       overflow: 'hidden',
     }}>
-      {/* 배경 거대 워터마크 */}
+      {/* 배경 거대 워터마크 — 본문과 겹치지 않도록 하단 배치 + 매우 연하게 */}
       <div style={{
         position: 'absolute',
         right: -20,
-        top: 30,
-        fontSize: 200,
+        bottom: 340,
+        fontSize: 150,
         fontWeight: 900,
         lineHeight: 1,
         color: tone.accentDeep,
-        opacity: 0.05,
+        opacity: 0.04,
         letterSpacing: '-0.06em',
         pointerEvents: 'none',
         zIndex: 0,
