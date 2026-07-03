@@ -21893,11 +21893,23 @@ function blogToPlainText(blog, content, mode) {
     lines.push('');
   }
 
+  // [도식 1] 위치 표시 (Pro 모드만 — 도입 다음, 본문1 앞)
+  if (!isWarm) {
+    lines.push('[ 도식 1 · 세션 데이터 자리 — 다운받은 도식모음 이미지의 FIGURE 01을 여기에 넣으세요 ]');
+    lines.push('');
+  }
+
   // 본문 1
   if (blog.section1_title) lines.push(`■ ${blog.section1_title}`);
   const sec1 = isWarm ? (blog.section1_warm || blog.body1) : (blog.section1_pro || blog.body1);
   if (sec1) {
     lines.push(_autoBreak(sec1));
+    lines.push('');
+  }
+
+  // [도식 2] 위치 표시 (Pro 모드만 — 본문1 다음, 본문2 앞)
+  if (!isWarm) {
+    lines.push('[ 도식 2 · 임상 접근 자리 — FIGURE 02를 여기에 넣으세요 ]');
     lines.push('');
   }
 
@@ -21909,11 +21921,17 @@ function blogToPlainText(blog, content, mode) {
     lines.push('');
   }
 
-  // 임상 데이터 (Pro만, 텍스트로)
+  // [도식 3] 위치 표시 (Pro 모드만 — 본문2 다음, 철학 앞)
+  if (!isWarm) {
+    lines.push('[ 도식 3 · 임상 철학 자리 — FIGURE 03을 여기에 넣으세요 ]');
+    lines.push('');
+  }
+
+  // 임상 데이터 (Pro만, 텍스트로 — 도식과 별개인 수치 요약)
   if (!isWarm && content?.clinicalData) {
     const d = content.clinicalData;
     const total = (d.mastered ?? 7) + (d.ongoing ?? 2) + (d.paused ?? 1);
-    lines.push(`■ Figure 01 · 세션 데이터 (총 ${total} 트라이얼)`);
+    lines.push(`■ 세션 데이터 요약 (총 ${total} 트라이얼)`);
     lines.push(`마스터: ${d.mastered ?? 7} · 진행중: ${d.ongoing ?? 2} · 중단: ${d.paused ?? 1}`);
     lines.push('');
   }
@@ -22187,8 +22205,69 @@ function BlogDiagramsDownloadButton({ containerRef, accent, mode, onToast }) {
       setBusy(false);
     }
   };
+
+  // 개별 다운로드 — 각 도식을 FIGURE 번호가 붙은 별도 PNG로 (본문 사이에 하나씩 끼워넣기 좋음)
+  const handleDownloadEach = async () => {
+    if (busy) return;
+    const container = containerRef?.current;
+    if (!container) {
+      if (onToast) onToast('블로그 영역을 찾지 못했어요', 'error', 2500);
+      return;
+    }
+    const svgs = Array.from(container.querySelectorAll('svg'));
+    if (svgs.length === 0) {
+      if (onToast) onToast('다운로드할 도식이 없어요', 'info', 2500);
+      return;
+    }
+    setBusy(true);
+    try {
+      const SCALE = 2;
+      for (let i = 0; i < svgs.length; i++) {
+        const svg = svgs[i];
+        const bbox = svg.getBoundingClientRect();
+        const w = Math.max(400, Math.round(bbox.width));
+        const h = Math.max(200, Math.round(bbox.height));
+        const cloned = svg.cloneNode(true);
+        cloned.setAttribute('width', String(w * SCALE));
+        cloned.setAttribute('height', String(h * SCALE));
+        if (!cloned.getAttribute('xmlns')) cloned.setAttribute('xmlns', 'http://www.w3.org/2000/svg');
+        const svgString = new XMLSerializer().serializeToString(cloned);
+        const svgDataUrl = `data:image/svg+xml;base64,${btoa(unescape(encodeURIComponent(svgString)))}`;
+        const img = await new Promise((resolve, reject) => {
+          const im = new Image();
+          im.onload = () => resolve(im);
+          im.onerror = () => reject(new Error(`도식 ${i + 1} 로드 실패`));
+          im.src = svgDataUrl;
+        });
+        const canvas = document.createElement('canvas');
+        canvas.width = w * SCALE;
+        canvas.height = h * SCALE;
+        const ctx = canvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0, w * SCALE, h * SCALE);
+        const pngDataUrl = canvas.toDataURL('image/png');
+        const a = document.createElement('a');
+        a.href = pngDataUrl;
+        a.download = `검단ABA_블로그${mode === 'pro' ? '전문' : ''}_도식${String(i + 1).padStart(2, '0')}.png`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        // 브라우저 연속 다운로드 차단 회피 — 각 파일 사이 간격
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (onToast) onToast(`도식 ${svgs.length}개를 각각 다운로드했어요 (도식01·02·03)`, 'success', 4000);
+    } catch (e) {
+      console.error('개별 도식 다운로드 실패:', e);
+      if (onToast) onToast(`도식 다운로드 실패: ${e.message || '오류'}`, 'error', 3500);
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
-    <button onClick={handleDownload} disabled={busy} style={{
+    <span style={{ display: 'inline-flex', gap: 8, flexWrap: 'wrap' }}>
+    <button onClick={handleDownloadEach} disabled={busy} style={{
       display: 'inline-flex', alignItems: 'center', gap: 8,
       padding: '10px 18px',
       background: busy ? '#aaa' : accent,
@@ -22200,8 +22279,22 @@ function BlogDiagramsDownloadButton({ containerRef, accent, mode, onToast }) {
       opacity: busy ? 0.7 : 1,
     }}>
       <span style={{ fontSize: 14 }}>{busy ? '⏳' : '📥'}</span>
-      {busy ? '변환 중...' : '도식 PNG 다운로드'}
+      {busy ? '변환 중...' : '도식 개별 다운로드 (3장)'}
     </button>
+    <button onClick={handleDownload} disabled={busy} style={{
+      display: 'inline-flex', alignItems: 'center', gap: 8,
+      padding: '10px 18px',
+      background: busy ? '#aaa' : '#fff',
+      color: accent, border: `1.5px solid ${accent}`, borderRadius: 999,
+      fontSize: 12.5, fontWeight: 700,
+      cursor: busy ? 'wait' : 'pointer',
+      fontFamily: 'inherit',
+      opacity: busy ? 0.7 : 1,
+    }}>
+      <span style={{ fontSize: 14 }}>{busy ? '⏳' : '🗂️'}</span>
+      {busy ? '변환 중...' : '한 장에 모아 받기'}
+    </button>
+    </span>
   );
 }
 
