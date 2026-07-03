@@ -17987,7 +17987,8 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
               fontSize: Math.round(13 * getFS('centerName')),
               fontWeight: 800,
               color: theme.text,
-              marginBottom: 4,
+              marginBottom: 6,
+              lineHeight: 1.45,
               letterSpacing: '-0.02em',
             }}>{centerName}</EditableText>
           {/* 자격 */}
@@ -17997,10 +17998,10 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
               fontSize: Math.round(9.5 * getFS('qualification')),
               color: tone.accentDeep,
               fontWeight: 600,
-              marginBottom: 10,
-              paddingBottom: 10,
+              marginBottom: 12,
+              paddingBottom: 12,
               borderBottom: `1px solid ${tone.line}`,
-              lineHeight: 1.5,
+              lineHeight: 1.55,
             }}>{qualification}</EditableText>
           {/* 전화 (강조) */}
           <EditableText fieldKey="phone" {...editProps}
@@ -18010,8 +18011,8 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
               fontWeight: 900,
               color: tone.accentDeep,
               letterSpacing: '0.02em',
-              marginBottom: 4,
-              lineHeight: 1.4,
+              marginBottom: 6,
+              lineHeight: 1.5,
             }}>{phone}</EditableText>
           {/* 주소 */}
           <EditableText fieldKey="address" {...editProps}
@@ -18019,14 +18020,15 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
             style={{
               fontSize: Math.round(10 * getFS('address')),
               color: INK_MUTE,
-              lineHeight: 1.5,
-              marginBottom: 4,
+              lineHeight: 1.6,
+              marginBottom: 6,
             }}>{address}</EditableText>
           {/* 운영시간 */}
           <div style={{
             fontSize: 10,
             color: INK_MUTE,
-            lineHeight: 1.5,
+            lineHeight: 1.6,
+            marginTop: 2,
           }}>평일 09:00 - 19:00</div>
         </div>
 
