@@ -9021,13 +9021,20 @@ const DurationBar = ({ tone, data }) => {
       {phases.map((ph, i) => {
         const y = 28 + i * 28;
         const barWidth = (ph.dur / maxDur) * 160;
+        // 막대가 길면(라벨이 viewBox 밖으로 넘칠 위험) 값을 막대 안 오른쪽에 흰 글씨로,
+        // 짧으면 막대 바로 뒤에 진한 글씨로 표시 → 오른쪽 경계(300) 넘침 방지
+        const labelInside = barWidth > 128;
         return (
           <g key={i}>
             <text x={22} y={y+12} fontSize="10" fontWeight="700" fill={tone.accentDeep}>{ph.label}</text>
             <text x={22} y={y+24} fontSize="8" fill={INK_MUTE}>{ph.sub}</text>
             <rect x={100} y={y+2} width={160} height={20} rx={3} fill={tone.soft} stroke={tone.line} strokeWidth="0.5"/>
             <rect x={100} y={y+2} width={barWidth} height={20} rx={3} fill={i === 0 ? tone.line : `url(#dbGrad${seed})`}/>
-            <text x={108 + barWidth} y={y+15} fontSize="10" fontWeight="700" fill={i === 0 ? INK : '#fff'}>{ph.dur}초</text>
+            {labelInside ? (
+              <text x={100 + barWidth - 8} y={y+15} textAnchor="end" fontSize="10" fontWeight="700" fill={i === 0 ? INK : '#fff'}>{ph.dur}초</text>
+            ) : (
+              <text x={108 + barWidth} y={y+15} fontSize="10" fontWeight="700" fill={i === 0 ? INK : tone.accentDeep}>{ph.dur}초</text>
+            )}
           </g>
         );
       })}
@@ -12292,6 +12299,15 @@ JSON 형식으로만 반환:
 - 강요·압박 톤 금지: "지금 시작하세요", "지금 결정하세요", "서두르세요" 같은 밀어붙이는 표현 ❌
 - 좋은 방향: "궁금한 점 편하게 물어보세요", "우리 아이 얘기 들려주세요", "작은 고민도 괜찮아요", "부담 없이 문의 주세요" 같은 다정하고 열린 톤 ✅
 - head는 8자×3줄 이내, sub는 부모님께 건네는 따뜻한 한마디 (40자 이내)
+
+**[★ 줄바꿈 규칙 — head와 sub 모두 반드시 적용 ★]**
+릴스는 큰 글씨라 줄이 어디서 바뀌는지가 중요합니다. 단어가 어정쩡하게 잘리면(예: "아이가 제 / 머리를 벽에 / 박았어요") 읽기 불편하고 어색합니다. 반드시 **의미 단위(구·절)로 끊어서 \\n(줄바꿈 문자)을 직접 넣으세요.**
+- 규칙 1: 조사(을/를/이/가/은/는/에/의/도/만)나 꾸미는 말이 윗줄 끝에 홀로 남지 않게 하세요. "아이가 제\\n머리를" ❌ → "아이가 제 머리를\\n벽에 박았어요" ✅
+- 규칙 2: 한 줄은 하나의 의미 덩어리로. 소리 내어 읽을 때 자연스럽게 쉬는 자리에서 줄을 바꾸세요.
+- 규칙 3: head는 2~3줄로 \\n을 넣어 균형 있게. sub도 길면(한 줄에 안 들어가면) 의미 단위로 \\n을 넣어 2줄로 나누세요. sub가 짧으면 \\n 없이 한 줄로.
+- 규칙 4: 줄마다 길이가 너무 들쑥날쑥하지 않게, 비슷한 폭으로 맞추면 더 깔끔합니다.
+- 좋은 예: head "말 걸지 마세요\\n기다리는 게\\n먼저예요" / sub "더 채워주려 할수록\\n아이가 낼 틈이 사라져요"
+- 나쁜 예: head "말 걸지\\n마세요 기다리는\\n게 먼저예요" (조사·단어가 어정쩡하게 끊김)
 
 JSON만 반환. 다시 강조: 한국어 값들은 영어 직역체가 아닌, 한국 임상 현장에서 실제로 쓰는 자연스러운 한국어여야 합니다.`;
 
