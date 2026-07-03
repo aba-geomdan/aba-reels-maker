@@ -13070,6 +13070,7 @@ const FORMAT_TEMPLATES = {
         clinicalData: input.clinicalData,
         toneId: input.tone || 'general',
         userTopic, // 라우터가 ToneArt에서 매칭할 진짜 주제
+        hideDiagram: !!input.reachMode, // 도달형(4장): 도식 숨겨 밀도 낮춤
       }));
       return scenes;
     }
@@ -14026,6 +14027,7 @@ export default function ReelStudioV8() {
         // 사용자가 입력한 진짜 주제 보존 (ToneArt 라우터가 정확히 매칭하려면 필수)
         topic: draftTopic,
         userTopic: draftTopic,
+        reachMode, // 도달형(4장)이면 도식 숨김에 사용
       };
       setFormInput(nextInput);
       // 즉시 빌드
@@ -14597,6 +14599,34 @@ export default function ReelStudioV8() {
   // (남겨두지 않음)
 
   // 노드 → SVG foreignObject → Image → Canvas → PNG Blob
+  // webm duration 메타 복구용 라이브러리를 필요할 때 1회만 CDN에서 로드.
+  // MediaRecorder + captureStream(0) 조합은 duration 헤더가 비어서
+  // (duration=N/A) 크롬·인스타 등에서 재생/업로드가 안 되는 문제가 있음.
+  // fix-webm-duration이 blob에 정확한 duration을 다시 박아줌.
+  function loadWebmDurationFix() {
+    if (window.ysFixWebmDuration || window.fixWebmDuration) {
+      return Promise.resolve(window.ysFixWebmDuration || window.fixWebmDuration);
+    }
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/fix-webm-duration@1.0.5/fix-webm-duration.js';
+      s.onload = () => resolve(window.ysFixWebmDuration || window.fixWebmDuration);
+      s.onerror = () => reject(new Error('duration-fix 로드 실패'));
+      document.head.appendChild(s);
+    });
+  }
+  // blob의 duration 헤더를 복구. 실패하면 원본을 그대로 반환(안전).
+  async function fixVideoDuration(blob, durationMs) {
+    try {
+      const fixer = await loadWebmDurationFix();
+      if (typeof fixer !== 'function') return blob;
+      return await fixer(blob, durationMs);
+    } catch (e) {
+      console.warn('[fixVideoDuration] 실패, 원본 사용:', e?.message);
+      return blob;
+    }
+  }
+
   // 노드 → Canvas (html2canvas 사용). 실제 렌더링을 그대로 캡처하므로
   // 폰트 깨짐이 없고, 오염(tainted) 문제도 useCORS 옵션으로 회피한다.
   // onclone: 캡처용 복제본에서 애니메이션(fadeUp/fadeIn 등)을 즉시 완료
@@ -14605,6 +14635,18 @@ export default function ReelStudioV8() {
     if (typeof window.html2canvas !== 'function') {
       throw new Error('html2canvas 미로드');
     }
+    // 캡처 전 웹폰트 로딩 완료 대기 — 폰트가 아직 안 뜬 상태로 캡처하면
+    // fallback 폰트(자간·높이 다름)로 그려져 글자가 밀리고 겹칩니다.
+    try {
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+        // 실제 사용 폰트 몇 개를 명시적으로 로드 트리거 (Safari/일부 브라우저 안전)
+        await Promise.all([
+          document.fonts.load('800 17px Pretendard').catch(() => {}),
+          document.fonts.load('600 10px Pretendard').catch(() => {}),
+        ]);
+      }
+    } catch (e) { /* 폰트 API 미지원 시 무시 */ }
     const rect = node.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width));
     const h = Math.max(1, Math.round(rect.height));
@@ -14629,6 +14671,7 @@ export default function ReelStudioV8() {
               opacity: 1 !important;
               transform: none !important;
               filter: none !important;
+              text-rendering: geometricPrecision !important;
             }
             .dl-hide { display: none !important; }
           `;
@@ -14731,6 +14774,7 @@ export default function ReelStudioV8() {
       recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
       const stopPromise = new Promise((resolve) => { recorder.onstop = () => resolve(); });
       recorder.start();
+      const recordStartTs = Date.now();
 
       // 각 슬라이드 순회 → DOM 캡처 → canvas에 그리기 → 일정 시간 유지
       for (let i = 0; i < total; i++) {
@@ -14797,10 +14841,13 @@ export default function ReelStudioV8() {
       recorder.stop();
       await stopPromise;
 
-      const videoBlob = new Blob(chunks, { type: 'video/webm' });
+      let videoBlob = new Blob(chunks, { type: 'video/webm' });
       if (videoBlob.size < 1000) {
         showToast('영상 녹화 차단됨 (artifact 환경 한계) — 깃허브 배포본에선 작동합니다', 'warning', 7000);
       } else {
+        // duration 헤더 복구 (크롬·인스타 재생 문제 해결)
+        const recordedMs = Date.now() - recordStartTs;
+        videoBlob = await fixVideoDuration(videoBlob, recordedMs);
         dlTrigger(videoBlob, `reels_video_${Date.now()}.webm`);
         setVidProgress(100);
         showToast('✅ 영상 다운로드 완료 (webm)', 'success', 4000);
@@ -17672,6 +17719,9 @@ function ClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, edi
       {/* 헤드와 도식 사이 살짝 여백 */}
       <div style={{ flex: 0.3 }}/>
 
+      {/* 도식 블록 — 도달형(4장)에서는 숨겨 밀도를 낮춤 */}
+      {!scene.hideDiagram && (
+      <>
       {/* 도식 위 캡션 (작은 라벨) */}
       <div style={{
         ...fadeIn(550),
@@ -17741,6 +17791,8 @@ function ClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, edi
           </button>
         )}
       </EditableText>
+      </>
+      )}
 
       {/* 도식 변경 모달 */}
       <DiagramPickerModal
@@ -17947,7 +17999,8 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
               color: tone.accentDeep,
               letterSpacing: '0.02em',
               marginBottom: 4,
-            }}>📞 {phone}</EditableText>
+              lineHeight: 1.4,
+            }}>{phone}</EditableText>
           {/* 주소 */}
           <EditableText fieldKey="address" {...editProps}
             element="div"
@@ -17956,13 +18009,13 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
               color: INK_MUTE,
               lineHeight: 1.5,
               marginBottom: 4,
-            }}>📍 {address}</EditableText>
+            }}>{address}</EditableText>
           {/* 운영시간 */}
           <div style={{
             fontSize: 10,
             color: INK_MUTE,
             lineHeight: 1.5,
-          }}>🕘 평일 09:00 - 19:00</div>
+          }}>평일 09:00 - 19:00</div>
         </div>
 
         {/* SNS 박스 */}
@@ -17979,8 +18032,8 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
             borderRadius: 8,
             textAlign: 'center',
           }}>
-            <div style={{ fontSize: 8, letterSpacing: '0.22em', color: tone.accentDeep, fontWeight: 700, marginBottom: 3 }}>INSTAGRAM</div>
-            <div style={{ fontSize: 10, color: theme.text, fontWeight: 600 }}>@aba_geomdan</div>
+            <div style={{ fontSize: 8, letterSpacing: '0.22em', color: tone.accentDeep, fontWeight: 700, marginBottom: 3, lineHeight: 1.4, display: 'block' }}>INSTAGRAM</div>
+            <div style={{ fontSize: 10, color: theme.text, fontWeight: 600, lineHeight: 1.4, display: 'block' }}>@aba_geomdan</div>
           </div>
           <div style={{
             flex: 1,
@@ -17990,8 +18043,8 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
             borderRadius: 8,
             textAlign: 'center',
           }}>
-            <div style={{ fontSize: 8, letterSpacing: '0.22em', color: tone.accentDeep, fontWeight: 700, marginBottom: 3 }}>BLOG</div>
-            <div style={{ fontSize: 10, color: theme.text, fontWeight: 600 }}>blog.naver.com/aba_geomdan</div>
+            <div style={{ fontSize: 8, letterSpacing: '0.22em', color: tone.accentDeep, fontWeight: 700, marginBottom: 3, lineHeight: 1.4, display: 'block' }}>BLOG</div>
+            <div style={{ fontSize: 10, color: theme.text, fontWeight: 600, lineHeight: 1.4, display: 'block' }}>blog.naver.com/aba_geomdan</div>
           </div>
         </div>
 
