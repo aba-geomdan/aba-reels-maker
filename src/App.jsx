@@ -14704,7 +14704,47 @@ export default function ReelStudioV8() {
     });
   }
 
-  // === PNG 6장 자동 다운로드 ===
+  // === 현재 슬라이드 1장만 다운로드 후 다음 장으로 이동 (폰 사파리 연속 다운로드 차단 회피) ===
+  async function downloadCurrentSlidePng() {
+    if (!config || !config.scenes || config.scenes.length === 0) {
+      showToast('먼저 슬라이드를 생성해주세요', 'warning', 3000); return;
+    }
+    if (pngBusy || vidBusy) return;
+    if (isPlaying) togglePlay();
+    const total = config.scenes.length;
+    let idx = currentSceneIdx;
+    if (idx < 0) idx = 0;
+    setPngBusy(true);
+    try {
+      gotoScene(idx);
+      // React commit + paint 대기 (도식 있는 슬라이드도 확실히 렌더되도록 넉넉히)
+      await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
+      await new Promise(r => setTimeout(r, 400));
+      const target = document.getElementById('reels-capture-target');
+      if (!target) { showToast('캡처 대상을 찾지 못했어요', 'error', 3000); return; }
+      const blob = await dlCaptureNode(target);
+      if (blob) {
+        dlTrigger(blob, `reels_${String(idx + 1).padStart(2, '0')}.png`);
+        const isLast = idx >= total - 1;
+        if (isLast) {
+          showToast(`✅ 마지막 ${total}장째 저장 완료! 인스타에 4장 모두 올려보세요`, 'success', 4500);
+        } else {
+          // 다음 장으로 자동 이동 → 다시 버튼 누르면 다음 장 저장
+          gotoScene(idx + 1);
+          showToast(`${idx + 1}장 저장됨 · 다음 장(${idx + 2}장)으로 이동했어요. [이 장 저장]을 다시 눌러주세요`, 'success', 4000);
+        }
+      } else {
+        showToast('이미지 저장 실패 — 다시 시도해주세요', 'warning', 4000);
+      }
+    } catch (e) {
+      console.error('슬라이드 저장 실패:', e);
+      showToast('저장 중 오류 — 다시 시도해주세요', 'warning', 4000);
+    } finally {
+      setTimeout(() => setPngBusy(false), 400);
+    }
+  }
+
+  // === PNG 6장 자동 다운로드 (PC용 — 폰에선 사파리가 연속 다운로드를 차단) ===
   async function downloadReelsPng() {
     if (!config || !config.scenes || config.scenes.length === 0) {
       showToast('먼저 슬라이드를 생성해주세요', 'warning', 3000); return;
@@ -14781,10 +14821,17 @@ export default function ReelStudioV8() {
     try {
       const stream = canvas.captureStream(0); // 수동 프레임 모드 (흰 프레임 방지)
       const vTrack = stream.getVideoTracks()[0];
-      // 코덱 fallback
-      let mimeType = 'video/webm;codecs=vp9';
-      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm;codecs=vp8';
-      if (!MediaRecorder.isTypeSupported(mimeType)) mimeType = 'video/webm';
+      // 코덱 선택: mp4를 먼저 시도 (아이폰/사파리는 mp4를 지원 — 사진앱 저장·인스타 업로드 가능).
+      // mp4가 안 되는 브라우저(크롬 등 다수)는 webm으로 자동 폴백.
+      const candidates = [
+        'video/mp4;codecs=h264',
+        'video/mp4',
+        'video/webm;codecs=vp9',
+        'video/webm;codecs=vp8',
+        'video/webm',
+      ];
+      let mimeType = candidates.find(t => MediaRecorder.isTypeSupported(t)) || 'video/webm';
+      const isMp4 = mimeType.startsWith('video/mp4');
       recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
       recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
       const stopPromise = new Promise((resolve) => { recorder.onstop = () => resolve(); });
@@ -14856,16 +14903,23 @@ export default function ReelStudioV8() {
       recorder.stop();
       await stopPromise;
 
-      let videoBlob = new Blob(chunks, { type: 'video/webm' });
+      let videoBlob = new Blob(chunks, { type: isMp4 ? 'video/mp4' : 'video/webm' });
       if (videoBlob.size < 1000) {
         showToast('영상 녹화 차단됨 (artifact 환경 한계) — 깃허브 배포본에선 작동합니다', 'warning', 7000);
       } else {
-        // duration 헤더 복구 (크롬·인스타 재생 문제 해결)
-        const recordedMs = Date.now() - recordStartTs;
-        videoBlob = await fixVideoDuration(videoBlob, recordedMs);
-        dlTrigger(videoBlob, `reels_video_${Date.now()}.webm`);
+        const ext = isMp4 ? 'mp4' : 'webm';
+        // duration 헤더 복구는 webm 전용 (mp4는 자체적으로 duration이 정상)
+        if (!isMp4) {
+          const recordedMs = Date.now() - recordStartTs;
+          videoBlob = await fixVideoDuration(videoBlob, recordedMs);
+        }
+        dlTrigger(videoBlob, `reels_video_${Date.now()}.${ext}`);
         setVidProgress(100);
-        showToast('✅ 영상 다운로드 완료 (webm)', 'success', 4000);
+        if (isMp4) {
+          showToast('✅ 영상 다운로드 완료 (mp4 — 사진앱 저장·인스타 업로드 가능)', 'success', 5000);
+        } else {
+          showToast('✅ 영상 다운로드 완료 (webm — 아이폰은 변환이 필요할 수 있어요)', 'success', 5000);
+        }
       }
     } catch (err) {
       stopped = true;
@@ -15703,17 +15757,26 @@ export default function ReelStudioV8() {
                   </div>
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                     <button
+                      onClick={downloadCurrentSlidePng}
+                      disabled={!config || pngBusy || vidBusy}
+                      style={{ ...primaryBtn(theme.primary, !config || pngBusy || vidBusy), flex: '1 1 auto' }}
+                      title="폰에서 안전 — 이 슬라이드 1장을 저장하고 다음 장으로 넘어가요">
+                      {pngBusy
+                        ? '⚡ 저장 중...'
+                        : `📱 이 장 저장 (${config && currentSceneIdx >= 0 ? currentSceneIdx + 1 : 1}/${config ? config.scenes.length : 4}장)`}
+                    </button>
+                    <button
                       onClick={downloadReelsPng}
                       disabled={!config || pngBusy || vidBusy}
                       style={{ ...primaryBtn(theme.primary, !config || pngBusy || vidBusy), flex: '1 1 auto' }}
-                      title="슬라이드별 PNG 이미지 다운로드">
-                      {pngBusy ? `⚡ PNG 추출 중... (${pngProgress}%)` : '📸 릴스 이미지 다운로드'}
+                      title="PC용 — 전체 슬라이드를 한 번에 다운로드 (폰에서는 일부만 저장될 수 있어요)">
+                      {pngBusy ? `⚡ PNG 추출 중... (${pngProgress}%)` : '💻 전체 한번에 (PC용)'}
                     </button>
                     <button
                       onClick={downloadReelsVideo}
                       disabled={!config || pngBusy || vidBusy}
                       style={{ ...primaryBtn('#1a1a1a', !config || pngBusy || vidBusy), flex: '1 1 auto' }}
-                      title="슬라이드 6장을 자동 재생하면서 webm 영상으로 다운로드">
+                      title="슬라이드를 자동 재생하면서 영상으로 다운로드">
                       {vidBusy ? `⚡ 영상 녹화 중... (${vidProgress}%)` : '🎬 릴스 영상 다운로드'}
                     </button>
                   </div>
