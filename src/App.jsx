@@ -14839,8 +14839,7 @@ export default function ReelStudioV8() {
       recorder = new MediaRecorder(stream, { mimeType, videoBitsPerSecond: 12_000_000 });
       recorder.ondataavailable = (e) => { if (e.data && e.data.size > 0) chunks.push(e.data); };
       const stopPromise = new Promise((resolve) => { recorder.onstop = () => resolve(); });
-      recorder.start();
-      const recordStartTs = Date.now();
+      let recordStartTs = 0; // 첫 슬라이드를 canvas에 그린 뒤 녹화 시작 (흰 커버 프레임 방지)
 
       // 각 슬라이드 순회 → DOM 캡처 → canvas에 그리기 → 일정 시간 유지
       for (let i = 0; i < total; i++) {
@@ -14872,6 +14871,11 @@ export default function ReelStudioV8() {
             else { dh = H; dw = H * ar; dx = (W - dw) / 2; dy = 0; }
             ctx.drawImage(img, dx, dy, dw, dh);
             URL.revokeObjectURL(url);
+            // 첫 슬라이드를 canvas에 그린 바로 그 순간 녹화 시작 → 0초부터 첫 슬라이드가 커버로 잡힘
+            if (i === 0 && recorder.state === 'inactive') {
+              recorder.start();
+              recordStartTs = Date.now();
+            }
             if (vTrack && vTrack.requestFrame) vTrack.requestFrame(); // 그린 직후 프레임 확정
           }
         } catch (e) {
@@ -14883,7 +14887,17 @@ export default function ReelStudioV8() {
           ctx.font = "800 80px 'Apple SD Gothic Neo','Noto Sans KR',sans-serif";
           ctx.textAlign = 'center';
           ctx.fillText(`슬라이드 ${i + 1}`, W / 2, H / 2);
+          if (i === 0 && recorder.state === 'inactive') {
+            recorder.start();
+            recordStartTs = Date.now();
+          }
           if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
+        }
+
+        // 안전장치: 어떤 이유로든 첫 슬라이드에서 녹화가 아직 시작 안 됐으면 지금 시작
+        if (recorder.state === 'inactive') {
+          recorder.start();
+          if (!recordStartTs) recordStartTs = Date.now();
         }
 
         // 슬라이드 유지 시간 — 수동 모드이므로 30fps로 프레임을 계속 밀어넣어야
