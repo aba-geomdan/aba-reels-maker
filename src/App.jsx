@@ -910,8 +910,44 @@ const callLLM = async (prompt) => {
     try { errText = await response.text(); } catch {}
     throw new Error(`HTTP ${response.status}: ${errText.slice(0, 200)}`);
   }
+  const contentType = response.headers.get('content-type') || '';
+
+  // claude-relay가 SSE 스트리밍(text/event-stream)으로 응답하는 경우:
+  // "data: {"type":"delta","text":"..."}" 조각들을 모아서 합침.
+  if (contentType.includes('text/event-stream') || contentType.includes('stream')) {
+    const raw = await response.text();
+    let text = '';
+    let errMsg = '';
+    for (const line of raw.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed.startsWith('data:')) continue;
+      const payload = trimmed.slice(5).trim();
+      if (!payload || payload === '[DONE]') continue;
+      try {
+        const obj = JSON.parse(payload);
+        if (typeof obj.text === 'string') text += obj.text;
+        else if (obj.delta && typeof obj.delta.text === 'string') text += obj.delta.text;
+        else if (obj.type === 'content_block_delta' && obj.delta && obj.delta.text) text += obj.delta.text;
+        else if (obj.error) errMsg = (obj.error && obj.error.message) || String(obj.error);
+      } catch (e) { /* JSON 아닌 라인 무시 */ }
+    }
+    text = text.trim();
+    if (!text) {
+      try {
+        const j = JSON.parse(raw);
+        if (Array.isArray(j.content)) {
+          text = j.content.map(b => b.type === 'text' ? b.text : '').filter(Boolean).join('\n').trim();
+        }
+      } catch (e) {}
+    }
+    if (!text) throw new Error(errMsg || '빈 응답(스트리밍)');
+    return text;
+  }
+
+  // 기존 방식: 한 번에 JSON으로 응답 ({ content: [...] })
   const data = await response.json();
   if (!data || !Array.isArray(data.content)) {
+    if (data && typeof data.text === 'string' && data.text.trim()) return data.text.trim();
     throw new Error(`응답구조 이상: keys=${Object.keys(data || {}).join(',')}`);
   }
   const text = data.content.map(b => b.type === 'text' ? b.text : '').filter(Boolean).join('\n').trim();
