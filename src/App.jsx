@@ -14986,7 +14986,17 @@ export default function ReelStudioV8() {
   };
 
   // === 슬라이드별 양식 변경 메뉴를 위한 현재 씬 인덱스 ===
-  const currentSceneIdx = config?.scenes.findIndex(s => s === currentScene) ?? -1;
+  // 주의: 객체 참조(===)로 찾으면 편집 저장 시 scene 객체가 새로 만들어져
+  // 인덱스가 -1이 되어 편집 내용이 화면에 반영 안 되는 버그가 생김.
+  // 그래서 시간 범위(startMs/endMs)로 인덱스를 직접 찾는다.
+  const currentSceneIdx = config?.scenes
+    ? (() => {
+        const byTime = config.scenes.findIndex(s => elapsed >= s.startMs && elapsed < s.endMs);
+        if (byTime >= 0) return byTime;
+        // 시간 범위를 못 찾으면(마지막 프레임 등) 마지막 슬라이드
+        return config.scenes.length - 1;
+      })()
+    : -1;
 
   // ─── 로그인 안 됐으면 로그인 화면만 ───────────────
   if (!authed) {
@@ -17355,7 +17365,7 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
 
   // 편집 완료
   const finishEditing = () => {
-    if (onContentChange && sceneIndex != null) {
+    if (onContentChange && typeof sceneIndex === 'number' && sceneIndex >= 0) {
       onContentChange(sceneIndex, fieldKey, draftValue);
     }
     setIsEditing(false);
