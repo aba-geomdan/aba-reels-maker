@@ -899,6 +899,7 @@ const callLLM = async (prompt) => {
       body: JSON.stringify({
         max_tokens: 3500,
         prompt: prompt,
+        stream: false, // 공용 claude-relay가 기본 스트리밍으로 바뀌어서, 명시적으로 JSON 응답 요청
       }),
       signal: controller.signal,
     });
