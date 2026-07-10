@@ -886,9 +886,8 @@ const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBh
 const LLM_RELAY_URL = `https://${SUPABASE_PROJECT}.supabase.co/functions/v1/claude-relay`;
 
 const callLLM = async (prompt) => {
-  const _isMobile = isMobileDevice();
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), _isMobile ? 60000 : 90000);
+  const timeoutId = setTimeout(() => controller.abort(), 90000);
   let response;
   try {
     response = await fetch(LLM_RELAY_URL, {
@@ -898,7 +897,7 @@ const callLLM = async (prompt) => {
         'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
       },
       body: JSON.stringify({
-        max_tokens: _isMobile ? 2500 : 3500,
+        max_tokens: 3500,
         prompt: prompt,
       }),
       signal: controller.signal,
