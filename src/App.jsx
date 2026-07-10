@@ -14714,6 +14714,7 @@ export default function ReelStudioV8() {
     let idx = currentSceneIdx;
     if (idx < 0) idx = 0;
     setPngBusy(true);
+    if (typeof window !== 'undefined') window.__reelsCapturing = true;
     try {
       gotoScene(idx);
       // React commit + paint 대기 (도식 있는 슬라이드도 확실히 렌더되도록 넉넉히)
@@ -14739,6 +14740,7 @@ export default function ReelStudioV8() {
       console.error('슬라이드 저장 실패:', e);
       showToast('저장 중 오류 — 다시 시도해주세요', 'warning', 4000);
     } finally {
+      if (typeof window !== 'undefined') window.__reelsCapturing = false;
       setTimeout(() => setPngBusy(false), 400);
     }
   }
@@ -14751,6 +14753,7 @@ export default function ReelStudioV8() {
     if (pngBusy || vidBusy) return;
     if (isPlaying) togglePlay();
     setPngBusy(true); setPngProgress(0);
+    if (typeof window !== 'undefined') window.__reelsCapturing = true;
     const total = config.scenes.length;
     const originalIdx = currentSceneIdx;
     let failCount = 0;
@@ -14782,6 +14785,7 @@ export default function ReelStudioV8() {
       console.error('PNG 다운로드 실패:', err);
       showToast('다운로드 중 오류 발생', 'warning', 4000);
     } finally {
+      if (typeof window !== 'undefined') window.__reelsCapturing = false;
       if (originalIdx >= 0 && originalIdx < total) { try { gotoScene(originalIdx); } catch (e) {} }
       setTimeout(() => { setPngBusy(false); setPngProgress(0); }, 800);
     }
@@ -14798,6 +14802,7 @@ export default function ReelStudioV8() {
     }
     if (isPlaying) togglePlay();
     setVidBusy(true); setVidProgress(0);
+    if (typeof window !== 'undefined') window.__reelsCapturing = true; // 녹화 중 등장 애니메이션 끄기 → 전환 프레임 방지
     const total = config.scenes.length;
     const originalIdx = currentSceneIdx;
     const PER_SCENE_MS = 3300; // 슬라이드당 3.3초 (읽기 여유)
@@ -14841,8 +14846,10 @@ export default function ReelStudioV8() {
       for (let i = 0; i < total; i++) {
         if (stopped) break;
         gotoScene(i);
+        // 슬라이드 전환 애니메이션(밀어올리기/페이드)이 완전히 끝난 뒤 캡처해야
+        // 다음 슬라이드가 반쯤 올라온 '핑크 전환 프레임'이 안 찍힘. 넉넉히 대기.
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
-        await new Promise(r => setTimeout(r, 350));
+        await new Promise(r => setTimeout(r, 800));
         const target = document.getElementById('reels-capture-target');
 
         try {
@@ -14926,6 +14933,7 @@ export default function ReelStudioV8() {
       console.error('영상 다운로드 실패:', err);
       showToast('영상 생성 중 오류 — 콘솔 확인', 'warning', 5000);
     } finally {
+      if (typeof window !== 'undefined') window.__reelsCapturing = false;
       if (originalIdx >= 0 && originalIdx < total) { try { gotoScene(originalIdx); } catch (e) {} }
       setTimeout(() => { setVidBusy(false); setVidProgress(0); }, 1000);
     }
@@ -17045,7 +17053,7 @@ function Frame({ style, config, currentScene, currentSceneIdx, selectedField, se
   const fadeUp = (delay) => {
     // sceneElapsed가 없거나 0이면 (정지 상태 또는 첫 프레임) 모두 보임
     // 그래야 LAYOUT 바꾸자마자 결과가 보임
-    const shown = !sceneElapsed || sceneElapsed >= delay * sf;
+    const shown = (typeof window !== 'undefined' && window.__reelsCapturing) || !sceneElapsed || sceneElapsed >= delay * sf;
     const blur = animPreset.blur || 0;
     const rotate = animPreset.rotate || 0;
 
@@ -17092,7 +17100,7 @@ function Frame({ style, config, currentScene, currentSceneIdx, selectedField, se
   });
 
   const scaleIn = (delay) => {
-    const shown = !sceneElapsed || sceneElapsed >= delay * sf;
+    const shown = (typeof window !== 'undefined' && window.__reelsCapturing) || !sceneElapsed || sceneElapsed >= delay * sf;
     // action 톤은 더 임팩트 있는 스케일 (커졌다 작아짐 효과)
     if (animPreset.kind === 'punch') {
       return {
