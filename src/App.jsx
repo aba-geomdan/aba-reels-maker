@@ -15050,8 +15050,12 @@ export default function ReelStudioV8() {
           <div style={{ fontSize: 13, fontWeight: 800, letterSpacing: 2, color: '#E59CB0', marginBottom: 6 }}>검단ABA</div>
           <h1 style={{ fontSize: 22, fontWeight: 800, color: '#2A2A2A', margin: '0 0 4px' }}>릴스 메이커</h1>
           <p style={{ fontSize: 13, color: '#999', margin: '0 0 24px' }}>로그인이 필요합니다</p>
+          {/* 브라우저 자동완성 차단용 미끼 필드 (화면에 보이지 않음) */}
+          <input type="text" name="username" tabIndex={-1} aria-hidden="true" autoComplete="username" style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none', zIndex: -1 }} />
+          <input type="password" name="password" tabIndex={-1} aria-hidden="true" autoComplete="current-password" style={{ position: 'absolute', opacity: 0, height: 0, width: 0, pointerEvents: 'none', zIndex: -1 }} />
           <input
             type="text" placeholder="아이디" value={loginId}
+            autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck="false"
             onChange={(e) => setLoginId(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
             style={{
@@ -15061,6 +15065,7 @@ export default function ReelStudioV8() {
           />
           <input
             type="password" placeholder="비밀번호" value={loginPw}
+            autoComplete="new-password"
             onChange={(e) => setLoginPw(e.target.value)}
             onKeyDown={(e) => { if (e.key === 'Enter') handleLogin(); }}
             style={{
