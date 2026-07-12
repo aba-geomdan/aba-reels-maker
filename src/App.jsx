@@ -14751,12 +14751,22 @@ export default function ReelStudioV8() {
   //   이동 후 startMs/endMs 재계산하고, 옮긴 슬라이드를 계속 보도록 elapsed 이동
   function moveScene(fromIdx, dir) {
     if (!config) return;
-    const scenes = [...config.scenes];
+    let scenes = [...config.scenes];
     const toIdx = fromIdx + dir;
     if (fromIdx < 0 || fromIdx >= scenes.length) return;
     if (toIdx < 0 || toIdx >= scenes.length) return;
     // 두 슬라이드 위치 교환
     [scenes[fromIdx], scenes[toIdx]] = [scenes[toIdx], scenes[fromIdx]];
+    // 본문 슬라이드 번호(index)를 새 순서대로 다시 매김 — 같은 type끼리 순번 재부여
+    //   (index가 있는 슬라이드만 대상. hook·cta 등은 index가 없어 영향 없음)
+    const typeCounts = {};
+    scenes.forEach(s => { if (s.index != null) typeCounts[s.type] = (typeCounts[s.type] || 0) + 1; });
+    const typeSeq = {};
+    scenes = scenes.map(s => {
+      if (s.index == null) return s;
+      typeSeq[s.type] = (typeSeq[s.type] || 0) + 1;
+      return { ...s, index: typeSeq[s.type], total: typeCounts[s.type] };
+    });
     // 시간 정보 재계산
     let cum = 0;
     const timed = scenes.map(s => {
@@ -14768,9 +14778,14 @@ export default function ReelStudioV8() {
     setIsPlaying(false);
     startRef.current = null;
     setConfig({ ...config, scenes: timed, totalMs: cum * 1000, actualDuration: cum, scenesReordered: true });
-    // 옮긴 슬라이드를 계속 보도록 새 위치로 이동
+    // 옮긴 슬라이드를 계속 보도록 새 위치로 이동 (다음 프레임에 확정 — 배칭 후 최신 config 기준)
     const moved = timed[toIdx];
-    if (moved) setElapsed(moved.startMs + 50);
+    if (moved) {
+      const targetMs = moved.startMs + 50;
+      setElapsed(targetMs);
+      requestAnimationFrame(() => setElapsed(targetMs));
+    }
+    showToast(`${dir < 0 ? '앞으로' : '뒤로'} 옮겼어요 · 이제 ${toIdx + 1}번째`, 'success', 1800);
   }
 
   function tick(ts) {
