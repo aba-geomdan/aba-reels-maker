@@ -13394,7 +13394,7 @@ function makeCta(input, seconds, tone) {
     seconds,
     centerName: '검단ABA 언어행동연구소',
     slogan: '두 자격(BCBA · 1급 언어재활사) 보유 원장 운영',
-    ctaText: '궁금한 점 문의 주세요',
+    ctaText: input.ctaText || '궁금한 점 문의 주세요',
     phone: '010-8238-8132',
     address: '인천 서구 이음1로 377 눈담봄 905호',
     hours: '평일 09:00 - 19:00',
@@ -19121,7 +19121,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
               display: 'inline-block',
               padding: '4px 10px', marginBottom: 12,
               background: theme.primary, color: '#fff',
-              fontSize: 10, fontWeight: 800, letterSpacing: 2,
+              fontSize: Math.round(10 * getFS('tag')), fontWeight: 800, letterSpacing: 2,
               borderRadius: 2,
             }}>{scene.tag || scene.eyebrow}</EditableText>
           )}
@@ -21987,7 +21987,7 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
               ...fadeIn(400),
               display: 'inline-block', padding: '4px 10px',
               background: theme.primary, color: '#fff',
-              fontSize: 10, fontWeight: 800, letterSpacing: 2,
+              fontSize: Math.round(10 * getFS('tag')), fontWeight: 800, letterSpacing: 2,
               borderRadius: 4, marginBottom: 12,
             }}>{scene.tag}</EditableText>
           )}
@@ -22029,9 +22029,10 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
         {/* 위 사진 (큰 둥근 카드) */}
         <div style={{
           ...scaleIn(100),
-          width: `${100 * (scene.imageScale || 1)}%`, aspectRatio: '5/4',
-          maxWidth: '100%',
+          width: '100%', aspectRatio: '5/4',
           alignSelf: 'center',
+          transform: (scene.imageScale && scene.imageScale !== 1) ? `scale(${scene.imageScale})` : undefined,
+          transformOrigin: 'center',
           borderRadius: 24, overflow: 'hidden',
           background: hasImage ? 'transparent' : `${theme.primary}10`,
           border: hasImage ? 'none' : `1px solid ${theme.primary}20`,
@@ -22055,7 +22056,7 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
             ...fadeIn(400),
             display: 'inline-block', padding: '3px 9px',
             background: theme.primary, color: '#fff',
-            fontSize: 10, fontWeight: 800, letterSpacing: 2,
+            fontSize: Math.round(10 * getFS('tag')), fontWeight: 800, letterSpacing: 2,
             borderRadius: 4, marginBottom: 8, alignSelf: 'flex-start',
           }}>{scene.tag}</EditableText>
         )}
@@ -22111,7 +22112,7 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
               ...fadeIn(300),
               display: 'inline-block', padding: '3px 9px',
               background: theme.primary, color: '#fff',
-              fontSize: 10, fontWeight: 800, letterSpacing: 2,
+              fontSize: Math.round(10 * getFS('tag')), fontWeight: 800, letterSpacing: 2,
               borderRadius: 4, marginBottom: 10, alignSelf: 'flex-start',
             }}>{scene.tag}</EditableText>
           )}
@@ -22147,8 +22148,10 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
       {/* 이미지 영역 */}
       <div style={{
         ...scaleIn(0),
-        width: `${100 * (scene.imageScale || 1)}%`, aspectRatio: '4/3',
-        maxWidth: '100%', alignSelf: 'center',
+        width: '100%', aspectRatio: '4/3',
+        alignSelf: 'center',
+        transform: (scene.imageScale && scene.imageScale !== 1) ? `scale(${scene.imageScale})` : undefined,
+        transformOrigin: 'center',
         borderRadius: theme.radius.lg, overflow: 'hidden',
         background: scene.image ? 'transparent' : `${theme.primary}10`,
         border: `1px solid ${theme.primary}20`,
@@ -22179,7 +22182,7 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
           ...fadeIn(200),
           display: 'inline-block', padding: '4px 10px',
           background: `${theme.primary}20`, color: theme.primary,
-          fontSize: 11, fontWeight: theme.fontWeight.bold,
+          fontSize: Math.round(11 * getFS('tag')), fontWeight: theme.fontWeight.bold,
           letterSpacing: 1, textTransform: 'uppercase',
           borderRadius: theme.radius.sm === 0 ? 0 : 6,
           alignSelf: align === 'flex-start' ? 'flex-start' : 'center',
@@ -22306,11 +22309,11 @@ function CtaScene({ scene, sceneIndex, selectedField, setSelectedField, editMode
           position: 'relative', zIndex: 1,
           ...(lang.cardStyle === 'elevated' ? { boxShadow: `0 6px 18px ${theme.primarySoft}` } : {}),
         }}>
-        {scene.phone && <Row label="문의" value={scene.phone} theme={theme} bold/>}
-        {scene.address && <Row label="위치" value={scene.address} theme={theme}/>}
-        {scene.hours && <Row label="운영" value={scene.hours} theme={theme}/>}
-        {scene.instagram && <Row label="인스타" value={scene.instagram} theme={theme}/>}
-        {scene.blog && <Row label="블로그" value={scene.blog} theme={theme}/>}
+        {scene.phone && <Row label="문의" value={scene.phone} theme={theme} bold scale={getFS('contact')}/>}
+        {scene.address && <Row label="위치" value={scene.address} theme={theme} scale={getFS('contact')}/>}
+        {scene.hours && <Row label="운영" value={scene.hours} theme={theme} scale={getFS('contact')}/>}
+        {scene.instagram && <Row label="인스타" value={scene.instagram} theme={theme} scale={getFS('contact')}/>}
+        {scene.blog && <Row label="블로그" value={scene.blog} theme={theme} scale={getFS('contact')}/>}
       </EditableText>
       {scene.hashtags && !isShortScene && (
         <div style={{
@@ -22326,17 +22329,18 @@ function CtaScene({ scene, sceneIndex, selectedField, setSelectedField, editMode
   );
 }
 
-function Row({ label, value, theme, bold }) {
+function Row({ label, value, theme, bold, scale = 1 }) {
   // value 텍스트 길이에 따라 폰트 사이즈를 자동 축소 — 한 줄에 강제로 들어오게
   const v = String(value || '');
-  const fs = v.length >= 24 ? 10.5
+  const fsBase = v.length >= 24 ? 10.5
            : v.length >= 20 ? 11
            : v.length >= 16 ? 11.5
            : 12;
+  const fs = fsBase * scale;
   return (
     <div style={{ display: 'flex', gap: 10, marginBottom: 2, alignItems: 'baseline' }}>
       <span style={{
-        fontSize: 10.5, color: theme.textMute, minWidth: 44, flexShrink: 0,
+        fontSize: 10.5 * scale, color: theme.textMute, minWidth: 44, flexShrink: 0,
       }}>{label}</span>
       <span style={{
         fontSize: fs,
