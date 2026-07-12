@@ -14023,42 +14023,42 @@ export default function ReelStudioV8() {
   useEffect(() => {
     // 첫 마운트엔 실행 안 함 (초기 applyForm이 따로 돎)
     if (!autoSyncMounted.current) { autoSyncMounted.current = true; return; }
-    // 아직 미리보기가 생성되지 않았으면(최초 생성 전) 자동 반영 안 함
-    if (!config) return;
     // AI 생성 중엔 충돌 방지 위해 건너뜀
     if (simpleAILoading || clarifyLoading || loading) return;
     // clinical(AI 원고) 양식은 폼 자동반영 대상 아님
     if (formatKey === 'clinical') return;
-    // 슬라이드 순서를 수동으로 바꿨으면 자동반영을 끔 (순서가 되돌아가는 것 방지).
-    //   이 경우 폼 수정은 [릴스 생성]을 다시 눌러야 반영됨.
-    if (config.scenesReordered) return;
     const template = FORMAT_TEMPLATES[formatKey];
     if (!template || typeof template.buildScenes !== 'function') return;
+    //  (미리보기 유무·순서 수동변경 여부는 아래 setConfig(prev=>...) 안에서 최신 상태로 판단)
 
     if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
     autoSyncTimer.current = setTimeout(() => {
       try {
-        let scenes = template.buildScenes(formInput);
-        // 기존 미리보기의 이미지/위치/크기 커스텀 보존
-        scenes = mergeSceneCustomizations(scenes, config.scenes);
-        // 자동 배분 이미지 풀도 반영 (잠긴/보존된 이미지는 유지됨)
-        if (imagePool.length > 0) {
-          scenes = distributeImagesToScenes(scenes, imagePool, imageMode);
-        }
-        // 재생 위치 유지하며 반영 (resetPlayback 없이 config만 갱신)
-        let cum = 0;
-        const timed = scenes.map(s => {
-          const out = { ...s, startMs: cum * 1000, endMs: (cum + s.seconds) * 1000 };
-          cum += s.seconds;
-          return out;
+        // 함수형 업데이트 안에서 최신 config(prev)를 읽어 stale 클로저 방지
+        setConfig(prev => {
+          if (!prev) return prev;                 // 아직 미리보기 없음
+          if (prev.scenesReordered) return prev;  // 순서 수동변경 시 자동반영 안 함
+          let scenes = template.buildScenes(formInput);
+          // 기존 미리보기의 이미지/위치/크기 커스텀 보존 (최신 prev.scenes 기준)
+          scenes = mergeSceneCustomizations(scenes, prev.scenes);
+          // 자동 배분 이미지 풀도 반영 (잠긴/보존된 이미지는 유지됨)
+          if (imagePool.length > 0) {
+            scenes = distributeImagesToScenes(scenes, imagePool, imageMode);
+          }
+          let cum = 0;
+          const timed = scenes.map(s => {
+            const out = { ...s, startMs: cum * 1000, endMs: (cum + s.seconds) * 1000 };
+            cum += s.seconds;
+            return out;
+          });
+          return {
+            ...prev,
+            format: formatKey,
+            scenes: timed,
+            totalMs: cum * 1000,
+            actualDuration: cum,
+          };
         });
-        setConfig(prev => prev ? ({
-          ...prev,
-          format: formatKey,
-          scenes: timed,
-          totalMs: cum * 1000,
-          actualDuration: cum,
-        }) : prev);
       } catch (e) {
         // 자동 반영 실패는 조용히 무시 (수동 [릴스 생성]으로 복구 가능)
         console.warn('[폼 자동반영] 실패:', e?.message);
@@ -14067,7 +14067,7 @@ export default function ReelStudioV8() {
 
     return () => { if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current); };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formInput, formatKey, imagePool, imageMode]);
+  }, [formInput, formatKey, imagePool, imageMode, simpleAILoading, clarifyLoading, loading]);
 
   // 이미지 풀을 본문 슬라이드에 배분
   // mode: 'cycle' (순환·기본) / 'once' (한 번만 채우고 나머지 배경) / 'manual' (자동 배분 끄기, 슬라이드별 수동만)
@@ -15916,8 +15916,9 @@ export default function ReelStudioV8() {
                   {/* 현재 사진 슬라이드의 사진 크기 조절 (크기 조절 모드 + photo + 이미지 있을 때만) */}
                   {config && textEditMode && currentScene && currentScene.type === 'photo' && currentScene.image && (() => {
                     const variant = ((currentScene.index || 1) - 1) % 4;
-                    // 변주 0(풀블리드)·2(좌우분할)는 화면을 꽉 채워서 크기 조절이 의미 없음
-                    const adjustable = variant === 1 || variant === 3;
+                    // 모든 변주에서 조절 가능:
+                    //  변주 1·3 = 사진 카드 박스 크기 / 변주 0·2 = 사진 자체 확대·축소(줌)
+                    const isZoom = variant === 0 || variant === 2;
                     const imgScale = currentScene.imageScale || 1;
                     const btn = (label, onClick, extra = {}) => (
                       <button onClick={onClick} style={{
@@ -15938,27 +15939,19 @@ export default function ReelStudioV8() {
                         boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
                       }}>
                         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: PK }}>
-                          📷 사진 크기 <span style={{ color: '#fff' }}>({currentScene.index}번)</span>
+                          {isZoom ? '📷 사진 확대' : '📷 사진 크기'} <span style={{ color: '#fff' }}>({currentScene.index}번)</span>
                         </span>
-                        {adjustable ? (
-                          <>
-                            {btn('−', () => setSceneImageScale(currentSceneIdx, -0.05))}
-                            <span style={{ minWidth: 48, textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700 }}>
-                              {Math.round(imgScale * 100)}%
-                            </span>
-                            {btn('+', () => setSceneImageScale(currentSceneIdx, 0.05))}
-                            <button onClick={() => setSceneImageScale(currentSceneIdx, 0, 'reset')} style={{
-                              padding: '0 10px', height: 32, borderRadius: 6,
-                              background: 'transparent', color: '#fff',
-                              border: '1px solid rgba(255,255,255,0.4)',
-                              fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
-                            }}>↻ 기본</button>
-                          </>
-                        ) : (
-                          <span style={{ fontSize: 11, color: '#bbb' }}>
-                            이 디자인은 사진이 화면을 꽉 채우는 형식이라 크기 조절이 없어요.
-                          </span>
-                        )}
+                        {btn('−', () => setSceneImageScale(currentSceneIdx, -0.05))}
+                        <span style={{ minWidth: 48, textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700 }}>
+                          {Math.round(imgScale * 100)}%
+                        </span>
+                        {btn('+', () => setSceneImageScale(currentSceneIdx, 0.05))}
+                        <button onClick={() => setSceneImageScale(currentSceneIdx, 0, 'reset')} style={{
+                          padding: '0 10px', height: 32, borderRadius: 6,
+                          background: 'transparent', color: '#fff',
+                          border: '1px solid rgba(255,255,255,0.4)',
+                          fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                        }}>↻ 기본</button>
                       </div>
                     );
                   })()}
@@ -21965,7 +21958,8 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
           ...scaleIn(0),
           position: 'absolute', inset: 0, zIndex: 0,
           backgroundImage: `url(${scene.image})`,
-          backgroundSize: 'cover', backgroundPosition: 'center',
+          backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover',
+          backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
         }}/>
         {/* 하단 그라데이션 오버레이 */}
         <div style={{
@@ -22095,7 +22089,8 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
           ...scaleIn(0),
           position: 'absolute', top: 0, left: 0, bottom: 0, width: '48%',
           backgroundImage: `url(${scene.image})`,
-          backgroundSize: 'cover', backgroundPosition: 'center',
+          backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `auto ${Math.round(100 * scene.imageScale)}%` : 'cover',
+          backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
         }}/>
         {/* 우측 텍스트 */}
         <div style={{
