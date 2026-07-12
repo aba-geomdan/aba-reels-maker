@@ -15766,7 +15766,6 @@ export default function ReelStudioV8() {
                   setImagePool={setImagePool}
                   imageMode={imageMode}
                   setImageMode={setImageMode}
-                  scenesReordered={!!(config && config.scenesReordered)}
                 />
               )}
               {inputMode === 'json' && (
@@ -15929,12 +15928,13 @@ export default function ReelStudioV8() {
                   )}
 
                   {/* 현재 사진 슬라이드의 사진 크기 조절 (크기 조절 모드 + photo + 이미지 있을 때만) */}
-                  {config && textEditMode && currentScene && currentScene.type === 'photo' && currentScene.image && (() => {
+                  {config && textEditMode && currentScene && currentScene.image && (() => {
+                    const isPhoto = currentScene.type === 'photo';
                     const variant = ((currentScene.index || 1) - 1) % 4;
-                    // 모든 변주에서 조절 가능:
-                    //  변주 1·3 = 사진 카드 박스 크기 / 변주 0·2 = 사진 자체 확대·축소(줌)
-                    const isZoom = variant === 0 || variant === 2;
+                    // photo 변주 1·3 = 카드 박스 크기 / 나머지(배경형·풀블리드 등) = 사진 확대·축소
+                    const isZoom = !isPhoto || variant === 0 || variant === 2;
                     const imgScale = currentScene.imageScale || 1;
+                    const numLabel = isPhoto && currentScene.index ? ` (${currentScene.index}번)` : '';
                     const btn = (label, onClick, extra = {}) => (
                       <button onClick={onClick} style={{
                         width: 32, height: 32, borderRadius: 6,
@@ -15954,7 +15954,7 @@ export default function ReelStudioV8() {
                         boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
                       }}>
                         <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: PK }}>
-                          {isZoom ? '📷 사진 확대' : '📷 사진 크기'} <span style={{ color: '#fff' }}>({currentScene.index}번)</span>
+                          {isZoom ? '📷 사진 확대' : '📷 사진 크기'}<span style={{ color: '#fff' }}>{numLabel}</span>
                         </span>
                         {btn('−', () => setSceneImageScale(currentSceneIdx, -0.05))}
                         <span style={{ minWidth: 48, textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700 }}>
@@ -16137,7 +16137,7 @@ export default function ReelStudioV8() {
                         title="이 슬라이드를 뒤로">뒤로 ▶</button>
                       {config.scenesReordered && (
                         <span style={{ fontSize: 10, color: INK_MUTE, width: '100%', textAlign: 'center', lineHeight: 1.4 }}>
-                          순서를 바꾼 뒤에는 왼쪽 폼 수정이 자동 반영되지 않아요. 반영하려면 [▸ 릴스 생성]을 다시 눌러주세요.
+                          바꾼 순서는 그대로 유지돼요. 이대로 영상·이미지를 만드시면 됩니다. (왼쪽 폼 내용을 다시 고치려면 [▸ 릴스 생성]을 눌러야 하는데, 그러면 순서가 처음으로 돌아가요.)
                         </span>
                       )}
                     </div>
@@ -16650,26 +16650,7 @@ function AIForm({ draftTopic, setDraftTopic, draftContext, setDraftContext, reac
 // ────────────────────────────────────────────────
 // 12) Simple Form (v5 그대로 + clinical 양식 추가)
 // ────────────────────────────────────────────────
-function SimpleForm({ formatKey, switchFormat, formInput, setFormInput, applyForm, onAIFill, aiLoading, aiError, imagePool, setImagePool, imageMode, setImageMode, scenesReordered }) {
-  // [릴스 생성] 2단계 확인: 순서를 바꾼 상태면 한 번 더 눌러야 진행 (순서 초기화 경고)
-  const [confirmRebuild, setConfirmRebuild] = useState(false);
-  const confirmTimerRef = useRef(null);
-  useEffect(() => () => { if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current); }, []);
-  // 순서를 안 바꾼 상태로 돌아오면 확인 상태도 초기화
-  useEffect(() => { if (!scenesReordered) setConfirmRebuild(false); }, [scenesReordered]);
-  const handleRebuildClick = () => {
-    if (scenesReordered && !confirmRebuild) {
-      // 1차 클릭 — 경고로 바꾸고 대기
-      setConfirmRebuild(true);
-      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-      confirmTimerRef.current = setTimeout(() => setConfirmRebuild(false), 5000);
-      return;
-    }
-    // 2차 클릭(또는 순서 안 바꾼 경우) — 실제 실행
-    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
-    setConfirmRebuild(false);
-    applyForm();
-  };
+function SimpleForm({ formatKey, switchFormat, formInput, setFormInput, applyForm, onAIFill, aiLoading, aiError, imagePool, setImagePool, imageMode, setImageMode }) {
   const update = (key, value) => setFormInput({ ...formInput, [key]: value });
 
   return (
@@ -16795,17 +16776,9 @@ function SimpleForm({ formatKey, switchFormat, formInput, setFormInput, applyFor
           <textarea value={formInput.hashtags || ''} onChange={(e) => update('hashtags', e.target.value)}
             rows={2} style={inp}/>
 
-          <button onClick={handleRebuildClick}
-            style={confirmRebuild
-              ? { ...primaryBtn('#c0392b'), animation: 'none' }
-              : primaryBtn('#1a1a1a')}>
-            {confirmRebuild ? '⚠ 슬라이드 순서가 초기화됩니다 · 한 번 더 누르면 진행' : '▸ 릴스 생성'}
+          <button onClick={applyForm} style={primaryBtn('#1a1a1a')}>
+            ▸ 릴스 생성
           </button>
-          {confirmRebuild && (
-            <div style={{ fontSize: 11, color: '#c0392b', marginTop: 6, lineHeight: 1.5, textAlign: 'center' }}>
-              지금까지 바꾼 슬라이드 순서가 기본 순서로 돌아가요. 순서를 지키려면 이 버튼을 누르지 말고, 폼 수정을 취소하세요.
-            </div>
-          )}
         </>
       )}
     </div>
@@ -18593,7 +18566,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
       <div style={{
         position: 'absolute', inset: 0, zIndex: -2,
         backgroundImage: `url(${scene.image})`,
-        backgroundSize: 'cover', backgroundPosition: 'center',
+        backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
       }}/>
       <div style={{
         position: 'absolute', inset: 0, zIndex: -1,
@@ -19512,7 +19485,7 @@ function CheckItemScene({ scene, sceneIndex, selectedField, setSelectedField, ed
             <div style={{
               position: 'absolute', inset: 0, zIndex: -2,
               backgroundImage: `url(${scene.image})`,
-              backgroundSize: 'cover', backgroundPosition: 'center',
+              backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
             }}/>
             <div style={{
               position: 'absolute', inset: 0, zIndex: -1,
@@ -19592,7 +19565,7 @@ function CheckItemScene({ scene, sceneIndex, selectedField, setSelectedField, ed
       <div style={{
         position: 'absolute', inset: 0, zIndex: -2,
         backgroundImage: `url(${scene.image})`,
-        backgroundSize: 'cover', backgroundPosition: 'center',
+        backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
       }}/>
       <div style={{
         position: 'absolute', inset: 0, zIndex: -1,
@@ -19938,7 +19911,7 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
             <div style={{
               position: 'absolute', inset: 0, zIndex: -2,
               backgroundImage: `url(${scene.image})`,
-              backgroundSize: 'cover', backgroundPosition: 'center',
+              backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
             }}/>
             <div style={{
               position: 'absolute', inset: 0, zIndex: -1,
@@ -20133,7 +20106,7 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
       {hasImage ? (
         <div style={{
           ...scaleIn(0),
-          width: 88, height: 88, marginBottom: 18,
+          width: Math.round(88 * (scene.imageScale || 1)), height: Math.round(88 * (scene.imageScale || 1)), marginBottom: 18,
           borderRadius: '50%',
           overflow: 'hidden',
           border: `3px solid ${theme.primary}30`,
@@ -20272,7 +20245,7 @@ function QuoteScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
             <div style={{
               position: 'absolute', inset: 0,
               backgroundImage: `url(${scene.image})`,
-              backgroundSize: 'cover', backgroundPosition: 'center',
+              backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
             }}/>
           ) : (
             <>
@@ -20936,13 +20909,15 @@ function CardScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
             fontFamily: '"Nanum Myeongjo", Georgia, serif',
           }}>{String(scene.index).padStart(2, '0')}</div>
           {scene.tag && (
-            <div style={{
+            <EditableText fieldKey="tag" {...editProps}
+              element="div"
+              style={{
               ...fadeIn(500),
               display: 'inline-block', padding: '4px 10px',
               background: `${theme.primary}20`, color: theme.primaryDeep,
-              fontSize: 10, fontWeight: 800, letterSpacing: 2,
+              fontSize: Math.round(10 * getFS('tag')), fontWeight: 800, letterSpacing: 2,
               borderRadius: 4, marginBottom: 12,
-            }}>{scene.tag}</div>
+            }}>{scene.tag}</EditableText>
           )}
           <EditableText fieldKey="title" {...editProps}
             element="div"
@@ -21014,13 +20989,15 @@ function CardScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
             </div>
           )}
           {scene.tag && (
-            <div style={{
+            <EditableText fieldKey="tag" {...editProps}
+              element="div"
+              style={{
               ...fadeIn(500),
               display: 'inline-block', padding: '3px 9px',
               background: `${theme.primary}15`, color: theme.primaryDeep,
-              fontSize: 10, fontWeight: 800, letterSpacing: 2,
+              fontSize: Math.round(10 * getFS('tag')), fontWeight: 800, letterSpacing: 2,
               borderRadius: 4, marginBottom: 10,
-            }}>{scene.tag}</div>
+            }}>{scene.tag}</EditableText>
           )}
           <EditableText fieldKey="title" {...editProps}
             element="div"
@@ -21066,13 +21043,15 @@ function CardScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
           marginBottom: 8, fontFamily: '"Nanum Myeongjo", Georgia, serif',
         }}>{String(scene.index).padStart(2, '0')}</div>
         {scene.tag && (
-          <div style={{
+          <EditableText fieldKey="tag" {...editProps}
+            element="div"
+            style={{
             ...fadeIn(500),
             padding: '4px 10px',
             background: 'rgba(255,255,255,0.2)', color: '#fff',
-            fontSize: 11, fontWeight: 800, letterSpacing: 2,
+            fontSize: Math.round(11 * getFS('tag')), fontWeight: 800, letterSpacing: 2,
             borderRadius: 4, marginBottom: 14,
-          }}>{scene.tag}</div>
+          }}>{scene.tag}</EditableText>
         )}
         <EditableText fieldKey="title" {...editProps}
           element="div"
@@ -21146,7 +21125,9 @@ function CardScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
             background: '#000',
           }}>
             <img src={scene.image} alt=""
-              style={{ width: '100%', height: '100%', objectFit: 'cover' }}/>
+              style={{ width: '100%', height: '100%', objectFit: 'cover',
+                transform: (scene.imageScale && scene.imageScale !== 1) ? `scale(${scene.imageScale})` : undefined,
+                transformOrigin: 'center' }}/>
           </div>
         )}
         <div style={{ padding: '22px 22px 26px' }}>
@@ -21166,16 +21147,16 @@ function CardScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
               </div>
             )}
             {scene.tag && (
-              <div style={{
+              <EditableText fieldKey="tag" {...editProps}
+                element="div"
+                style={{
                 ...fadeIn(400), display: 'inline-block', padding: '4px 10px',
                 background: theme.accent === 'square' ? theme.text : `${theme.primary}20`,
                 color: theme.accent === 'square' ? theme.bg : theme.primary,
-                fontSize: 11, fontWeight: theme.fontWeight.bold,
+                fontSize: Math.round(11 * getFS('tag')), fontWeight: theme.fontWeight.bold,
                 letterSpacing: 1, textTransform: 'uppercase',
                 borderRadius: theme.radius.sm === 0 ? 0 : 6,
-              }}>
-                {scene.tag}
-              </div>
+              }}>{scene.tag}</EditableText>
             )}
           </div>
         )}
@@ -21245,7 +21226,7 @@ function TitleSlideScene({ scene, sceneIndex, selectedField, setSelectedField, e
             <div style={{
               position: 'absolute', inset: 0, zIndex: -2,
               backgroundImage: `url(${scene.image})`,
-              backgroundSize: 'cover', backgroundPosition: 'center',
+              backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
             }}/>
             <div style={{
               position: 'absolute', inset: 0, zIndex: -1,
@@ -21462,7 +21443,7 @@ function TitleSlideScene({ scene, sceneIndex, selectedField, setSelectedField, e
           <div style={{
             position: 'absolute', inset: 0, zIndex: -2,
             backgroundImage: `url(${scene.image})`,
-            backgroundSize: 'cover', backgroundPosition: 'center',
+            backgroundSize: (scene.imageScale && scene.imageScale !== 1) ? `${Math.round(100 * scene.imageScale)}% auto` : 'cover', backgroundPosition: 'center', backgroundRepeat: 'no-repeat',
           }}/>
           <div style={{
             position: 'absolute', inset: 0, zIndex: -1,
