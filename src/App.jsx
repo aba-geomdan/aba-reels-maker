@@ -13988,6 +13988,87 @@ export default function ReelStudioV8() {
     }
   }
 
+  // 폼 자동 반영: 폼(formInput)을 고치면 [릴스 생성] 안 눌러도 미리보기 갱신.
+  //  - 텍스트는 폼 값이 우선 (폼에서 고친 게 바로 반영되도록)
+  //  - 미리보기에서 커스텀한 이미지·위치·크기는 인덱스 맞춰 보존
+  const autoSyncTimer = useRef(null);
+  const autoSyncMounted = useRef(false);
+  // 새 scene 배열에 기존 scene의 커스텀(이미지/위치/크기)을 얹어 병합
+  function mergeSceneCustomizations(newScenes, oldScenes) {
+    if (!Array.isArray(oldScenes)) return newScenes;
+    return newScenes.map((ns, i) => {
+      const os = oldScenes[i];
+      // 같은 타입 슬라이드끼리만 커스텀 이어받기 (구조 어긋나면 건너뜀)
+      if (!os || os.type !== ns.type) return ns;
+      const merged = { ...ns };
+      // 이미지: 사용자가 직접 배치했거나 잠근 경우 보존
+      if (os.image !== undefined && (os.imageLocked || os.image)) {
+        merged.image = os.image;
+      }
+      if (os.imageLocked) merged.imageLocked = true;
+      // 사진 크기 배율 보존
+      if (os.imageScale) merged.imageScale = os.imageScale;
+      // 위치·크기 커스텀 보존
+      if (os.fieldScales) merged.fieldScales = os.fieldScales;
+      if (os.fieldOffsets) merged.fieldOffsets = os.fieldOffsets;
+      // 폼에 대응 입력칸이 없는 장식 텍스트 필드는 직접 편집분 보존
+      //  (buildScenes가 새로 만들지 않으므로 여기서 이어받지 않으면 유실됨)
+      ['kicker', 'masthead', 'volume', 'estTag'].forEach(k => {
+        if (os[k] !== undefined) merged[k] = os[k];
+      });
+      return merged;
+    });
+  }
+
+  useEffect(() => {
+    // 첫 마운트엔 실행 안 함 (초기 applyForm이 따로 돎)
+    if (!autoSyncMounted.current) { autoSyncMounted.current = true; return; }
+    // 아직 미리보기가 생성되지 않았으면(최초 생성 전) 자동 반영 안 함
+    if (!config) return;
+    // AI 생성 중엔 충돌 방지 위해 건너뜀
+    if (simpleAILoading || clarifyLoading || loading) return;
+    // clinical(AI 원고) 양식은 폼 자동반영 대상 아님
+    if (formatKey === 'clinical') return;
+    // 슬라이드 순서를 수동으로 바꿨으면 자동반영을 끔 (순서가 되돌아가는 것 방지).
+    //   이 경우 폼 수정은 [릴스 생성]을 다시 눌러야 반영됨.
+    if (config.scenesReordered) return;
+    const template = FORMAT_TEMPLATES[formatKey];
+    if (!template || typeof template.buildScenes !== 'function') return;
+
+    if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current);
+    autoSyncTimer.current = setTimeout(() => {
+      try {
+        let scenes = template.buildScenes(formInput);
+        // 기존 미리보기의 이미지/위치/크기 커스텀 보존
+        scenes = mergeSceneCustomizations(scenes, config.scenes);
+        // 자동 배분 이미지 풀도 반영 (잠긴/보존된 이미지는 유지됨)
+        if (imagePool.length > 0) {
+          scenes = distributeImagesToScenes(scenes, imagePool, imageMode);
+        }
+        // 재생 위치 유지하며 반영 (resetPlayback 없이 config만 갱신)
+        let cum = 0;
+        const timed = scenes.map(s => {
+          const out = { ...s, startMs: cum * 1000, endMs: (cum + s.seconds) * 1000 };
+          cum += s.seconds;
+          return out;
+        });
+        setConfig(prev => prev ? ({
+          ...prev,
+          format: formatKey,
+          scenes: timed,
+          totalMs: cum * 1000,
+          actualDuration: cum,
+        }) : prev);
+      } catch (e) {
+        // 자동 반영 실패는 조용히 무시 (수동 [릴스 생성]으로 복구 가능)
+        console.warn('[폼 자동반영] 실패:', e?.message);
+      }
+    }, 400);
+
+    return () => { if (autoSyncTimer.current) clearTimeout(autoSyncTimer.current); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formInput, formatKey, imagePool, imageMode]);
+
   // 이미지 풀을 본문 슬라이드에 배분
   // mode: 'cycle' (순환·기본) / 'once' (한 번만 채우고 나머지 배경) / 'manual' (자동 배분 끄기, 슬라이드별 수동만)
   // 슬라이드에 imageLocked: true 있으면 자동 배분이 덮어쓰지 않음
@@ -14422,6 +14503,28 @@ export default function ReelStudioV8() {
     setConfig({ ...config, scenes: newScenes });
   }
 
+  // 슬라이드별 사진(이미지 카드) 크기 배율 (0.6 ~ 1.5, 1.0이 기본)
+  //   scene.imageScale 에 저장. 1.0이면 필드 제거.
+  //   mode: 'delta'(현재값 ± amount) 또는 'set'(값 지정) 또는 'reset'
+  function setSceneImageScale(sceneIndex, amount, mode = 'delta') {
+    if (!config) return;
+    const newScenes = config.scenes.map((s, i) => {
+      if (i !== sceneIndex) return s;
+      const cur = s.imageScale || 1;
+      let next;
+      if (mode === 'reset') next = 1;
+      else if (mode === 'set') next = amount;
+      else next = cur + amount;
+      next = Math.max(0.6, Math.min(1.5, Number(next) || 1));
+      if (Math.abs(next - 1) < 0.01) {
+        const { imageScale, ...rest } = s;
+        return rest;
+      }
+      return { ...s, imageScale: next };
+    });
+    setConfig({ ...config, scenes: newScenes });
+  }
+
   // 슬라이드별 상단 로고 표시/숨김 토글
   //   true(숨김)일 때만 hideLogo 필드 저장, false(표시 기본값)이면 필드 자체 제거해서 객체 깨끗하게
   function toggleSceneLogoHide(sceneIndex) {
@@ -14480,6 +14583,41 @@ export default function ReelStudioV8() {
   }
   function getSceneFieldScale(scene, fieldKey) {
     return (scene?.fieldScales || {})[fieldKey] || 1;
+  }
+
+  // 슬라이드 안 특정 필드의 위치 이동 오프셋 (px 단위, 화면 기준)
+  //   scene.fieldOffsets = { title: { x: 0, y: -20 }, ... } 형태로 저장
+  //   {x:0, y:0}이면 해당 키 제거, fieldOffsets 비면 fieldOffsets 자체도 제거
+  //   mode: 'delta' (dx/dy 만큼 이동) 또는 'reset' (0으로 초기화)
+  function setSceneFieldOffset(sceneIndex, fieldKey, dx, dy, mode = 'delta') {
+    if (!config) return;
+    const LIMIT = 300; // 최대 이동 범위 (px)
+    const newScenes = config.scenes.map((s, i) => {
+      if (i !== sceneIndex) return s;
+      const current = s.fieldOffsets || {};
+      const cur = current[fieldKey] || { x: 0, y: 0 };
+      let nx, ny;
+      if (mode === 'reset') {
+        nx = 0; ny = 0;
+      } else {
+        nx = Math.max(-LIMIT, Math.min(LIMIT, (cur.x || 0) + dx));
+        ny = Math.max(-LIMIT, Math.min(LIMIT, (cur.y || 0) + dy));
+      }
+      const next = { ...current };
+      if (nx === 0 && ny === 0) {
+        delete next[fieldKey];
+      } else {
+        next[fieldKey] = { x: nx, y: ny };
+      }
+      const rest = { ...s };
+      if (Object.keys(next).length === 0) {
+        delete rest.fieldOffsets;
+      } else {
+        rest.fieldOffsets = next;
+      }
+      return rest;
+    });
+    setConfig({ ...config, scenes: newScenes });
   }
 
   // 슬라이드 특정 필드(head, sub 등) 텍스트 내용 변경
@@ -14607,6 +14745,32 @@ export default function ReelStudioV8() {
     const base = cur === -1 ? last : cur;
     const next = base < last ? base + 1 : last;
     gotoScene(next);
+  }
+
+  // 슬라이드 순서 이동 — fromIdx 슬라이드를 dir(-1 앞으로 / +1 뒤로) 한 칸 이동
+  //   이동 후 startMs/endMs 재계산하고, 옮긴 슬라이드를 계속 보도록 elapsed 이동
+  function moveScene(fromIdx, dir) {
+    if (!config) return;
+    const scenes = [...config.scenes];
+    const toIdx = fromIdx + dir;
+    if (fromIdx < 0 || fromIdx >= scenes.length) return;
+    if (toIdx < 0 || toIdx >= scenes.length) return;
+    // 두 슬라이드 위치 교환
+    [scenes[fromIdx], scenes[toIdx]] = [scenes[toIdx], scenes[fromIdx]];
+    // 시간 정보 재계산
+    let cum = 0;
+    const timed = scenes.map(s => {
+      const out = { ...s, startMs: cum * 1000, endMs: (cum + s.seconds) * 1000 };
+      cum += s.seconds;
+      return out;
+    });
+    cancelAnimationFrame(rafRef.current);
+    setIsPlaying(false);
+    startRef.current = null;
+    setConfig({ ...config, scenes: timed, totalMs: cum * 1000, actualDuration: cum, scenesReordered: true });
+    // 옮긴 슬라이드를 계속 보도록 새 위치로 이동
+    const moved = timed[toIdx];
+    if (moved) setElapsed(moved.startMs + 50);
   }
 
   function tick(ts) {
@@ -15587,6 +15751,7 @@ export default function ReelStudioV8() {
                   setImagePool={setImagePool}
                   imageMode={imageMode}
                   setImageMode={setImageMode}
+                  scenesReordered={!!(config && config.scenesReordered)}
                 />
               )}
               {inputMode === 'json' && (
@@ -15748,13 +15913,64 @@ export default function ReelStudioV8() {
                     </div>
                   )}
 
+                  {/* 현재 사진 슬라이드의 사진 크기 조절 (크기 조절 모드 + photo + 이미지 있을 때만) */}
+                  {config && textEditMode && currentScene && currentScene.type === 'photo' && currentScene.image && (() => {
+                    const variant = ((currentScene.index || 1) - 1) % 4;
+                    // 변주 0(풀블리드)·2(좌우분할)는 화면을 꽉 채워서 크기 조절이 의미 없음
+                    const adjustable = variant === 1 || variant === 3;
+                    const imgScale = currentScene.imageScale || 1;
+                    const btn = (label, onClick, extra = {}) => (
+                      <button onClick={onClick} style={{
+                        width: 32, height: 32, borderRadius: 6,
+                        background: 'transparent', color: '#fff',
+                        border: '1px solid rgba(255,255,255,0.4)',
+                        fontSize: 16, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                        ...extra,
+                      }}>{label}</button>
+                    );
+                    return (
+                      <div style={{
+                        width: '100%', maxWidth: 480,
+                        padding: '10px 14px',
+                        background: '#1a1a1a', color: '#fff',
+                        borderRadius: 10,
+                        display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap',
+                        boxShadow: '0 4px 14px rgba(0,0,0,0.18)',
+                      }}>
+                        <span style={{ fontSize: 11, fontWeight: 700, letterSpacing: 1, color: PK }}>
+                          📷 사진 크기 <span style={{ color: '#fff' }}>({currentScene.index}번)</span>
+                        </span>
+                        {adjustable ? (
+                          <>
+                            {btn('−', () => setSceneImageScale(currentSceneIdx, -0.05))}
+                            <span style={{ minWidth: 48, textAlign: 'center', fontVariantNumeric: 'tabular-nums', fontSize: 13, fontWeight: 700 }}>
+                              {Math.round(imgScale * 100)}%
+                            </span>
+                            {btn('+', () => setSceneImageScale(currentSceneIdx, 0.05))}
+                            <button onClick={() => setSceneImageScale(currentSceneIdx, 0, 'reset')} style={{
+                              padding: '0 10px', height: 32, borderRadius: 6,
+                              background: 'transparent', color: '#fff',
+                              border: '1px solid rgba(255,255,255,0.4)',
+                              fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                            }}>↻ 기본</button>
+                          </>
+                        ) : (
+                          <span style={{ fontSize: 11, color: '#bbb' }}>
+                            이 디자인은 사진이 화면을 꽉 채우는 형식이라 크기 조절이 없어요.
+                          </span>
+                        )}
+                      </div>
+                    );
+                  })()}
+
                   {/* 선택된 필드의 글자 크기 조절 팝업 (슬라이드 바깥) */}
                   {selectedField && config && (() => {
                     const s = config.scenes[selectedField.sceneIndex];
                     if (!s) return null;
                     const scale = (s.fieldScales || {})[selectedField.fieldKey] || 1;
                     const labelMap = {
-                      title: '제목', sub: '부제', body: '본문', text: '항목',
+                      title: '제목', sub: '부제', body: '본문', text: '항목', tag: '태그',
+                      kicker: '라벨', masthead: '제호', volume: '호수', estTag: '설립연도',
                       number: '숫자', label: '라벨', desc: '설명',
                       quote: '인용', attribution: '출처',
                       before: '이전', after: '이후',
@@ -15807,6 +16023,50 @@ export default function ReelStudioV8() {
                             border: '1px solid rgba(255,255,255,0.4)',
                             fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
                           }}>↻ 기본</button>
+
+                        {/* ── 위치 이동 컨트롤 ── */}
+                        {(() => {
+                          const STEP = 8; // 한 번에 이동하는 px
+                          const off = (s.fieldOffsets || {})[selectedField.fieldKey] || { x: 0, y: 0 };
+                          const moved = (off.x || 0) !== 0 || (off.y || 0) !== 0;
+                          const arrowBtn = {
+                            width: 30, height: 30, borderRadius: 6,
+                            background: 'transparent', color: '#fff',
+                            border: '1px solid rgba(255,255,255,0.4)',
+                            fontSize: 15, fontWeight: 700, cursor: 'pointer',
+                            fontFamily: 'inherit', lineHeight: 1,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          };
+                          return (
+                            <div style={{
+                              display: 'flex', alignItems: 'center', gap: 8,
+                              paddingLeft: 12, marginLeft: 4,
+                              borderLeft: '1px solid rgba(255,255,255,0.25)',
+                            }}>
+                              <span style={{ fontSize: 10, fontWeight: 700, color: PK, letterSpacing: 1 }}>위치</span>
+                              <button aria-label="왼쪽으로" style={arrowBtn}
+                                onClick={() => setSceneFieldOffset(selectedField.sceneIndex, selectedField.fieldKey, -STEP, 0)}>←</button>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+                                <button aria-label="위로" style={{ ...arrowBtn, height: 22 }}
+                                  onClick={() => setSceneFieldOffset(selectedField.sceneIndex, selectedField.fieldKey, 0, -STEP)}>↑</button>
+                                <button aria-label="아래로" style={{ ...arrowBtn, height: 22 }}
+                                  onClick={() => setSceneFieldOffset(selectedField.sceneIndex, selectedField.fieldKey, 0, STEP)}>↓</button>
+                              </div>
+                              <button aria-label="오른쪽으로" style={arrowBtn}
+                                onClick={() => setSceneFieldOffset(selectedField.sceneIndex, selectedField.fieldKey, STEP, 0)}>→</button>
+                              {moved && (
+                                <button
+                                  onClick={() => setSceneFieldOffset(selectedField.sceneIndex, selectedField.fieldKey, 0, 0, 'reset')}
+                                  style={{
+                                    padding: '0 8px', height: 30, borderRadius: 6,
+                                    background: 'transparent', color: '#fff',
+                                    border: '1px solid rgba(255,255,255,0.4)',
+                                    fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit',
+                                  }}>↻ 위치</button>
+                              )}
+                            </div>
+                          );
+                        })()}
                         <button
                           onClick={() => setSelectedField(null)}
                           style={{
@@ -15828,6 +16088,52 @@ export default function ReelStudioV8() {
                     <button onClick={gotoPrevScene} disabled={!config || currentSceneIdx <= 0} style={secondaryBtn} title="이전 슬라이드">‹ 이전</button>
                     <button onClick={gotoNextScene} disabled={!config || (currentSceneIdx >= 0 && currentSceneIdx >= config.scenes.length - 1)} style={secondaryBtn} title="다음 슬라이드">다음 ›</button>
                   </div>
+
+                  {/* 슬라이드 순서 이동 — 지금 보는 슬라이드를 앞/뒤로 옮기기 */}
+                  {config && config.scenes.length > 1 && currentSceneIdx >= 0 && (
+                    <div style={{
+                      display: 'flex', alignItems: 'center', justifyContent: 'center',
+                      gap: 8, flexWrap: 'wrap', marginTop: 8,
+                      width: '100%', maxWidth: 480,
+                      padding: '8px 12px', background: '#FFF0F3',
+                      borderRadius: 10, border: `1px solid ${PK}`,
+                    }}>
+                      <span style={{ fontSize: 11, fontWeight: 700, color: PKD, letterSpacing: 0.5 }}>
+                        슬라이드 순서 <span style={{ color: INK_SOFT }}>({currentSceneIdx + 1}/{config.scenes.length})</span>
+                      </span>
+                      <button
+                        onClick={() => moveScene(currentSceneIdx, -1)}
+                        disabled={currentSceneIdx <= 0}
+                        style={{
+                          padding: '6px 12px', borderRadius: 7,
+                          background: currentSceneIdx <= 0 ? '#f0e0e5' : '#fff',
+                          color: currentSceneIdx <= 0 ? '#ccc' : PKD,
+                          border: `1px solid ${currentSceneIdx <= 0 ? '#f0e0e5' : PK}`,
+                          fontSize: 12, fontWeight: 700,
+                          cursor: currentSceneIdx <= 0 ? 'not-allowed' : 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                        title="이 슬라이드를 앞으로">◀ 앞으로</button>
+                      <button
+                        onClick={() => moveScene(currentSceneIdx, 1)}
+                        disabled={currentSceneIdx >= config.scenes.length - 1}
+                        style={{
+                          padding: '6px 12px', borderRadius: 7,
+                          background: currentSceneIdx >= config.scenes.length - 1 ? '#f0e0e5' : '#fff',
+                          color: currentSceneIdx >= config.scenes.length - 1 ? '#ccc' : PKD,
+                          border: `1px solid ${currentSceneIdx >= config.scenes.length - 1 ? '#f0e0e5' : PK}`,
+                          fontSize: 12, fontWeight: 700,
+                          cursor: currentSceneIdx >= config.scenes.length - 1 ? 'not-allowed' : 'pointer',
+                          fontFamily: 'inherit',
+                        }}
+                        title="이 슬라이드를 뒤로">뒤로 ▶</button>
+                      {config.scenesReordered && (
+                        <span style={{ fontSize: 10, color: INK_MUTE, width: '100%', textAlign: 'center', lineHeight: 1.4 }}>
+                          순서를 바꾼 뒤에는 왼쪽 폼 수정이 자동 반영되지 않아요. 반영하려면 [▸ 릴스 생성]을 다시 눌러주세요.
+                        </span>
+                      )}
+                    </div>
+                  )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                     <button
                       onClick={downloadCurrentSlidePng}
@@ -16336,7 +16642,26 @@ function AIForm({ draftTopic, setDraftTopic, draftContext, setDraftContext, reac
 // ────────────────────────────────────────────────
 // 12) Simple Form (v5 그대로 + clinical 양식 추가)
 // ────────────────────────────────────────────────
-function SimpleForm({ formatKey, switchFormat, formInput, setFormInput, applyForm, onAIFill, aiLoading, aiError, imagePool, setImagePool, imageMode, setImageMode }) {
+function SimpleForm({ formatKey, switchFormat, formInput, setFormInput, applyForm, onAIFill, aiLoading, aiError, imagePool, setImagePool, imageMode, setImageMode, scenesReordered }) {
+  // [릴스 생성] 2단계 확인: 순서를 바꾼 상태면 한 번 더 눌러야 진행 (순서 초기화 경고)
+  const [confirmRebuild, setConfirmRebuild] = useState(false);
+  const confirmTimerRef = useRef(null);
+  useEffect(() => () => { if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current); }, []);
+  // 순서를 안 바꾼 상태로 돌아오면 확인 상태도 초기화
+  useEffect(() => { if (!scenesReordered) setConfirmRebuild(false); }, [scenesReordered]);
+  const handleRebuildClick = () => {
+    if (scenesReordered && !confirmRebuild) {
+      // 1차 클릭 — 경고로 바꾸고 대기
+      setConfirmRebuild(true);
+      if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+      confirmTimerRef.current = setTimeout(() => setConfirmRebuild(false), 5000);
+      return;
+    }
+    // 2차 클릭(또는 순서 안 바꾼 경우) — 실제 실행
+    if (confirmTimerRef.current) clearTimeout(confirmTimerRef.current);
+    setConfirmRebuild(false);
+    applyForm();
+  };
   const update = (key, value) => setFormInput({ ...formInput, [key]: value });
 
   return (
@@ -16462,9 +16787,17 @@ function SimpleForm({ formatKey, switchFormat, formInput, setFormInput, applyFor
           <textarea value={formInput.hashtags || ''} onChange={(e) => update('hashtags', e.target.value)}
             rows={2} style={inp}/>
 
-          <button onClick={applyForm} style={primaryBtn('#1a1a1a')}>
-            ▸ 릴스 생성
+          <button onClick={handleRebuildClick}
+            style={confirmRebuild
+              ? { ...primaryBtn('#c0392b'), animation: 'none' }
+              : primaryBtn('#1a1a1a')}>
+            {confirmRebuild ? '⚠ 슬라이드 순서가 초기화됩니다 · 한 번 더 누르면 진행' : '▸ 릴스 생성'}
           </button>
+          {confirmRebuild && (
+            <div style={{ fontSize: 11, color: '#c0392b', marginTop: 6, lineHeight: 1.5, textAlign: 'center' }}>
+              지금까지 바꾼 슬라이드 순서가 기본 순서로 돌아가요. 순서를 지키려면 이 버튼을 누르지 말고, 폼 수정을 취소하세요.
+            </div>
+          )}
         </>
       )}
     </div>
@@ -17382,6 +17715,16 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
   const [draftValue, setDraftValue] = useState('');
   const textareaRef = React.useRef(null);
 
+  // 위치 이동 오프셋 (fieldOffsets에 저장된 값을 transform으로 적용)
+  const _off = (scene?.fieldOffsets || {})[fieldKey];
+  const offsetStyle = (_off && (_off.x || _off.y))
+    ? {
+        transform: `translate(${_off.x || 0}px, ${_off.y || 0}px)`,
+        position: 'relative',
+        zIndex: 5,
+      }
+    : null;
+
   // 편집 시작
   const startEditing = (e) => {
     e.stopPropagation();
@@ -17455,6 +17798,7 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
   if (contentEditMode && sceneIndex != null) {
     const editStyle = {
       ...style,
+      ...offsetStyle,
       cursor: 'text',
       outline: '1.5px dashed rgba(232,120,140,0.5)',
       outlineOffset: 2,
@@ -17468,7 +17812,7 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
   // 크기 조절 모드 (기존 동작)
   if (!editMode || sceneIndex == null) {
     const Tag = element;
-    return <Tag style={style} {...rest}>{children}</Tag>;
+    return <Tag style={{ ...style, ...offsetStyle }} {...rest}>{children}</Tag>;
   }
   const isSelected = selectedField && selectedField.sceneIndex === sceneIndex && selectedField.fieldKey === fieldKey;
   const handleClick = (e) => {
@@ -17477,6 +17821,7 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
   };
   const editStyle = {
     ...style,
+    ...offsetStyle,
     cursor: 'pointer',
     outline: isSelected ? '2px solid #E8788C' : '1.5px dashed rgba(232,120,140,0.5)',
     outlineOffset: 2,
@@ -18420,11 +18765,13 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
                 color: theme.primary,
               }}>01</span>
             </div>
-            <div style={{
+            <EditableText fieldKey="kicker" {...editProps}
+              element="div"
+              style={{
               ...fadeIn(500),
               fontSize: 9, letterSpacing: 3, color: theme.primary,
               fontWeight: 800, marginBottom: 18, textAlign: 'left',
-            }}>· FEATURED CARD ·</div>
+            }}>{scene.kicker || '· FEATURED CARD ·'}</EditableText>
             {iconName && !hasImage && (
               <div style={{
                 ...scaleIn(700),
@@ -18608,25 +18955,31 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
           display: 'flex', justifyContent: 'space-between', alignItems: 'baseline',
           fontFamily: '"Nanum Myeongjo", "Apple SD Gothic Neo", Georgia, serif',
         }}>
-          <div style={{
+          <EditableText fieldKey="masthead" {...editProps}
+            element="div"
+            style={{
             fontSize: 18, fontWeight: 900,
             color: hasImage ? '#fff' : '#1a1a1a',
             letterSpacing: '-0.02em', fontStyle: 'italic',
-          }}>The GEOMDAN Times</div>
-          <div style={{
+          }}>{scene.masthead || 'The GEOMDAN Times'}</EditableText>
+          <EditableText fieldKey="volume" {...editProps}
+            element="div"
+            style={{
             fontSize: 8, letterSpacing: 1,
             color: hasImage ? '#fff' : '#666',
             fontFamily: 'ui-monospace, "SF Mono", "Courier New", monospace',
-          }}>VOL.001</div>
+          }}>{scene.volume || 'VOL.001'}</EditableText>
         </div>
-        <div style={{
+        <EditableText fieldKey="kicker" {...editProps}
+          element="div"
+          style={{
           ...fadeIn(200),
           alignSelf: 'flex-start',
           background: theme.primary, color: '#fff',
           fontSize: 10, fontWeight: 900, letterSpacing: 3,
           padding: '4px 10px', marginBottom: 14,
           fontFamily: 'ui-monospace, "SF Mono", "Courier New", monospace',
-        }}>● BREAKING NEWS</div>
+        }}>{scene.kicker || '● BREAKING NEWS'}</EditableText>
         <EditableText fieldKey="title" {...editProps}
           element="div"
           style={{
@@ -18690,11 +19043,13 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
           display: 'inline-flex', alignItems: 'center', gap: 7,
         }}>
           <img src={LOGO_HORIZONTAL} alt="검단ABA" style={{ height: 12, width: 'auto', display: 'block', pointerEvents: 'none' }}/>
-          <span style={{
+          <EditableText fieldKey="estTag" {...editProps}
+            element="span"
+            style={{
             fontSize: 8, letterSpacing: 1, color: '#1a1a1a',
             fontFamily: '"Nanum Myeongjo", "Apple SD Gothic Neo", Georgia, serif',
             fontStyle: 'italic', fontWeight: 700,
-          }}>· est. 2026</span>
+          }}>{scene.estTag || '· est. 2026'}</EditableText>
         </div>
       </div>
     );
@@ -18766,14 +19121,16 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
         }}>
           {/* 카테고리 작은 라벨 */}
           {(scene.tag || scene.eyebrow) && (
-            <div style={{
+            <EditableText fieldKey="tag" {...editProps}
+              element="div"
+              style={{
               ...fadeIn(300),
               display: 'inline-block',
               padding: '4px 10px', marginBottom: 12,
               background: theme.primary, color: '#fff',
               fontSize: 10, fontWeight: 800, letterSpacing: 2,
               borderRadius: 2,
-            }}>{scene.tag || scene.eyebrow}</div>
+            }}>{scene.tag || scene.eyebrow}</EditableText>
           )}
           {/* 헤드라인 (형광펜 강조 자동 적용) */}
           <EditableText fieldKey="title" {...editProps}
@@ -21630,13 +21987,15 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
           zIndex: 2,
         }}>
           {scene.tag && (
-            <div style={{
+            <EditableText fieldKey="tag" {...editProps}
+              element="div"
+              style={{
               ...fadeIn(400),
               display: 'inline-block', padding: '4px 10px',
               background: theme.primary, color: '#fff',
               fontSize: 10, fontWeight: 800, letterSpacing: 2,
               borderRadius: 4, marginBottom: 12,
-            }}>{scene.tag}</div>
+            }}>{scene.tag}</EditableText>
           )}
           <EditableText fieldKey="title" {...editProps}
             element="div"
@@ -21676,7 +22035,9 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
         {/* 위 사진 (큰 둥근 카드) */}
         <div style={{
           ...scaleIn(100),
-          width: '100%', aspectRatio: '5/4',
+          width: `${100 * (scene.imageScale || 1)}%`, aspectRatio: '5/4',
+          maxWidth: '100%',
+          alignSelf: 'center',
           borderRadius: 24, overflow: 'hidden',
           background: hasImage ? 'transparent' : `${theme.primary}10`,
           border: hasImage ? 'none' : `1px solid ${theme.primary}20`,
@@ -21694,13 +22055,15 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
           )}
         </div>
         {scene.tag && (
-          <div style={{
+          <EditableText fieldKey="tag" {...editProps}
+            element="div"
+            style={{
             ...fadeIn(400),
             display: 'inline-block', padding: '3px 9px',
             background: theme.primary, color: '#fff',
             fontSize: 10, fontWeight: 800, letterSpacing: 2,
             borderRadius: 4, marginBottom: 8, alignSelf: 'flex-start',
-          }}>{scene.tag}</div>
+          }}>{scene.tag}</EditableText>
         )}
         <EditableText fieldKey="title" {...editProps}
           element="div"
@@ -21747,13 +22110,15 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
             marginBottom: 14,
           }}>PHOTO · {String(scene.index).padStart(2, '0')}</div>
           {scene.tag && (
-            <div style={{
+            <EditableText fieldKey="tag" {...editProps}
+              element="div"
+              style={{
               ...fadeIn(300),
               display: 'inline-block', padding: '3px 9px',
               background: theme.primary, color: '#fff',
               fontSize: 10, fontWeight: 800, letterSpacing: 2,
               borderRadius: 4, marginBottom: 10, alignSelf: 'flex-start',
-            }}>{scene.tag}</div>
+            }}>{scene.tag}</EditableText>
           )}
           <EditableText fieldKey="title" {...editProps}
             element="div"
@@ -21787,7 +22152,8 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
       {/* 이미지 영역 */}
       <div style={{
         ...scaleIn(0),
-        width: '100%', aspectRatio: '4/3',
+        width: `${100 * (scene.imageScale || 1)}%`, aspectRatio: '4/3',
+        maxWidth: '100%', alignSelf: 'center',
         borderRadius: theme.radius.lg, overflow: 'hidden',
         background: scene.image ? 'transparent' : `${theme.primary}10`,
         border: `1px solid ${theme.primary}20`,
@@ -21812,7 +22178,9 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
 
       {/* 텍스트 영역 */}
       {scene.tag && (
-        <div style={{
+        <EditableText fieldKey="tag" {...editProps}
+          element="div"
+          style={{
           ...fadeIn(200),
           display: 'inline-block', padding: '4px 10px',
           background: `${theme.primary}20`, color: theme.primary,
@@ -21821,9 +22189,7 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
           borderRadius: theme.radius.sm === 0 ? 0 : 6,
           alignSelf: align === 'flex-start' ? 'flex-start' : 'center',
           marginBottom: 10,
-        }}>
-          {scene.tag}
-        </div>
+        }}>{scene.tag}</EditableText>
       )}
       <EditableText fieldKey="title" {...editProps}
         element="div"
