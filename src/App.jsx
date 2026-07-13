@@ -14908,7 +14908,6 @@ export default function ReelStudioV8() {
               animation: none !important;
               transition: none !important;
               opacity: 1 !important;
-              transform: none !important;
               filter: none !important;
               text-rendering: geometricPrecision !important;
             }
@@ -15048,7 +15047,8 @@ export default function ReelStudioV8() {
     let recorder = null;
 
     try {
-      const stream = canvas.captureStream(0); // 수동 프레임 모드 (흰 프레임 방지)
+      const FPS = 30;
+      const stream = canvas.captureStream(FPS); // 고정 30fps 자동 모드 — 길이가 항상 일정하게 녹화됨
       const vTrack = stream.getVideoTracks()[0];
       // 코덱 선택: mp4를 먼저 시도 (아이폰/사파리는 mp4를 지원 — 사진앱 저장·인스타 업로드 가능).
       // mp4가 안 되는 브라우저(크롬 등 다수)는 webm으로 자동 폴백.
@@ -15101,7 +15101,6 @@ export default function ReelStudioV8() {
               recorder.start();
               recordStartTs = Date.now();
             }
-            if (vTrack && vTrack.requestFrame) vTrack.requestFrame(); // 그린 직후 프레임 확정
           }
         } catch (e) {
           console.error(`영상 프레임 ${i + 1} 실패:`, e);
@@ -15116,7 +15115,6 @@ export default function ReelStudioV8() {
             recorder.start();
             recordStartTs = Date.now();
           }
-          if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
         }
 
         // 안전장치: 어떤 이유로든 첫 슬라이드에서 녹화가 아직 시작 안 됐으면 지금 시작
@@ -15125,25 +15123,21 @@ export default function ReelStudioV8() {
           if (!recordStartTs) recordStartTs = Date.now();
         }
 
-        // 슬라이드 유지 시간 — 수동 모드이므로 30fps로 프레임을 계속 밀어넣어야
-        // 그 시간만큼 영상에 담긴다.
+        // 슬라이드 유지 — 30fps 자동 캡처가 이 시간만큼 프레임을 채운다.
+        // (canvas 내용이 고정돼 있으므로 그 시간 동안 같은 화면이 녹화됨)
         const sceneMs = PER_SCENE_MS + (i === total - 1 ? LAST_SCENE_EXTRA_MS : 0);
         const totalMs = total * PER_SCENE_MS + LAST_SCENE_EXTRA_MS;
         const startWait = Date.now();
         while (Date.now() - startWait < sceneMs) {
-          await new Promise(r => setTimeout(r, 33)); // ~30fps
-          if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
+          await new Promise(r => setTimeout(r, 100));
           const progressMs = i * PER_SCENE_MS + (Date.now() - startWait);
           setVidProgress(Math.min(99, Math.round((progressMs / totalMs) * 100)));
           if (stopped) break;
         }
       }
 
-      // 마지막 프레임 몇 개 더 밀어넣어 안전 마감
-      for (let k = 0; k < 5; k++) {
-        if (vTrack && vTrack.requestFrame) vTrack.requestFrame();
-        await new Promise(r => setTimeout(r, 33));
-      }
+      // 마지막 여운 — 자동 캡처가 마무리 프레임을 담도록 잠깐 대기
+      await new Promise(r => setTimeout(r, 200));
 
       recorder.stop();
       await stopPromise;
