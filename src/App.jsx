@@ -14626,9 +14626,19 @@ export default function ReelStudioV8() {
     if (!config) return;
     const newScenes = config.scenes.map((s, i) => {
       if (i !== sceneIndex) return s;
-      // fieldKey가 'title'이면 scene.head에, 'sub'이면 scene.sub에 저장 (호환성)
-      const targetKey = fieldKey === 'title' ? 'head' : fieldKey;
-      return { ...s, [targetKey]: newValue };
+      const next = { ...s };
+      // 같은 의미의 필드가 레이아웃마다 다른 이름을 써서(title/head, sub/subTitle 등),
+      // 어느 이름으로 렌더하든 편집이 반영되도록 별칭 필드를 함께 업데이트한다.
+      const aliasGroups = {
+        title: ['title', 'head', 'mainTitle'],
+        head: ['title', 'head', 'mainTitle'],
+        mainTitle: ['title', 'head', 'mainTitle'],
+        sub: ['sub', 'subTitle'],
+        subTitle: ['sub', 'subTitle'],
+      };
+      const keys = aliasGroups[fieldKey] || [fieldKey];
+      keys.forEach(k => { next[k] = newValue; });
+      return next;
     });
     setConfig({ ...config, scenes: newScenes });
   }
@@ -17721,9 +17731,20 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
     else if (React.isValidElement(children) && typeof children.props?.children === 'string') {
       currentText = children.props.children;
     } else if (scene && fieldKey) {
-      // 폴백: scene 객체에서 직접 가져옴
-      const key = fieldKey === 'title' ? 'head' : fieldKey;
-      currentText = scene[key] || '';
+      // 폴백: scene 객체에서 직접 가져옴 (레이아웃마다 필드명이 달라 별칭도 확인)
+      const aliasGroups = {
+        title: ['head', 'title', 'mainTitle'],
+        head: ['head', 'title', 'mainTitle'],
+        mainTitle: ['mainTitle', 'head', 'title'],
+        sub: ['sub', 'subTitle'],
+        subTitle: ['subTitle', 'sub'],
+        q: ['question', 'q'],
+        a: ['answer', 'a'],
+      };
+      const candidates = aliasGroups[fieldKey] || [fieldKey];
+      for (const k of candidates) {
+        if (scene[k] != null && scene[k] !== '') { currentText = scene[k]; break; }
+      }
     }
     setDraftValue(currentText);
     setIsEditing(true);
@@ -17789,6 +17810,17 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
 
   // 내용 편집 모드 켜져 있으면 — 클릭 시 편집 시작
   if (contentEditMode && sceneIndex != null) {
+    // children이 편집 가능한 텍스트인지 판단 (Row 컴포넌트 묶음 등은 편집 불가)
+    const key0 = fieldKey === 'title' ? 'head' : fieldKey;
+    const hasEditableText =
+      typeof children === 'string' ||
+      (React.isValidElement(children) && typeof children.props?.children === 'string') ||
+      (scene && (typeof scene[fieldKey] === 'string' || typeof scene[key0] === 'string'));
+    if (!hasEditableText) {
+      // 편집 불가 필드(연락처 카드 등)는 크기조절만 되게 — 일반 렌더로 통과
+      const Tag = element;
+      return <Tag style={{ ...style, ...offsetStyle }} {...rest}>{children}</Tag>;
+    }
     const editStyle = {
       ...style,
       ...offsetStyle,
@@ -21559,7 +21591,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           boxShadow: `0 8px 24px ${theme.primary}50`,
         }}>{scene.index}</div>
         {/* 큰 질문 */}
-        <EditableText fieldKey="q" {...editProps}
+        <EditableText fieldKey="question" {...editProps}
           element="div"
           style={{
             ...fadeUp(isShortScene ? 400 : 800),
@@ -21570,7 +21602,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             marginBottom: 24, zIndex: 2,
           }}>{scene.question}</EditableText>
         {/* 답 — 채팅 박스 (1개로 합침) */}
-        <EditableText fieldKey="a" {...editProps}
+        <EditableText fieldKey="answer" {...editProps}
           element="div"
           style={{
             ...fadeUp(isShortScene ? 800 : 1400),
@@ -21635,7 +21667,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           marginBottom: 22, zIndex: 2,
         }}>{scene.index}</div>
         {/* 큰 질문 */}
-        <EditableText fieldKey="q" {...editProps}
+        <EditableText fieldKey="question" {...editProps}
           element="div"
           style={{
             ...fadeUp(isShortScene ? 400 : 800),
@@ -21645,7 +21677,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             marginBottom: 24, zIndex: 2,
           }}>{scene.question}</EditableText>
         {/* 채팅 박스 답변 */}
-        <EditableText fieldKey="a" {...editProps}
+        <EditableText fieldKey="answer" {...editProps}
           element="div"
           style={{
             ...fadeUp(isShortScene ? 800 : 1400),
@@ -21711,7 +21743,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
           gap: 14,
         }}>
-          <EditableText fieldKey="q" {...editProps}
+          <EditableText fieldKey="question" {...editProps}
             element="div"
             style={{
               ...fadeUp(isShortScene ? 400 : 800),
@@ -21723,7 +21755,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             ...fadeIn(isShortScene ? 700 : 1200),
             height: 2, width: 30, background: theme.primary,
           }}/>
-          <EditableText fieldKey="a" {...editProps}
+          <EditableText fieldKey="answer" {...editProps}
             element="div"
             style={{
               ...fadeIn(isShortScene ? 900 : 1500),
@@ -21762,7 +21794,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             color: '#fff', opacity: 0.85,
             fontSize: 11, fontWeight: 800, letterSpacing: 3, marginBottom: 12,
           }}>QUESTION · {String(scene.index).padStart(2,'0')}</div>
-          <EditableText fieldKey="q" {...editProps}
+          <EditableText fieldKey="question" {...editProps}
             element="div"
             style={{
               ...fadeUp(isShortScene ? 300 : 700),
@@ -21784,7 +21816,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             fontSize: 11, fontWeight: 800, letterSpacing: 2,
             borderRadius: 2, marginBottom: 14,
           }}>ANSWER</div>
-          <EditableText fieldKey="a" {...editProps}
+          <EditableText fieldKey="answer" {...editProps}
             element="div"
             style={{
               fontSize: Math.round(aSize * 1.05 * getFS('a')), lineHeight: 1.7,
@@ -21867,7 +21899,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
       {renderQMark()}
 
       {/* 질문 */}
-      <EditableText fieldKey="q" {...editProps}
+      <EditableText fieldKey="question" {...editProps}
         element="div"
         style={{
           ...fadeUp(isShortScene ? 200 : 600),
@@ -21915,7 +21947,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             <Icon name={iconName} size={20} strokeWidth={1.6} colorful={scene.iconColorful}/>
           </div>
         )}
-        <EditableText fieldKey="a" {...editProps}
+        <EditableText fieldKey="answer" {...editProps}
           element="div"
           style={{
             fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.7,
