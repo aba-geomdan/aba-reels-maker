@@ -12787,15 +12787,20 @@ const recommendFormatForTopic = async (topic, currentFormatKey) => {
 주제: "${topic}"
 현재 사용자가 고른 양식: ${currentFormatKey}
 
-양식 목록:
-- checklist: 신호·증상·체크포인트 나열용 ("이런 아이라면", "이런 신호가 있다면"). 모집 대상도 가능.
-- bigNumber: 인상적인 수치 3개로 임팩트. 통계·차별점·핵심 숫자.
-- cards: 항목별 풀어 설명. 개념 설명·서비스 소개·단계별·"X란?" 주제에 적합.
-- qa: 묻고 답하기. FAQ·궁금증·개념 설명에 적합.
-- compare: A vs B. 차이·오해와 진실·전후 비교.
-- quote: 명언·후기·메시지 강조.
-- titleSeries: 강한 한 단어/한 줄 시리즈.
-- photo: 사진 카드. 공간·일상·후기.
+양식 목록 (각 양식이 '가장 빛나는' 경우):
+- checklist: "이런 신호가 있다면", "이런 아이라면" 처럼 여러 항목을 체크하듯 나열할 때만. (범용으로 남용 금지)
+- bigNumber: 인상적인 수치·통계·비율 3개로 임팩트를 줄 때. 숫자가 핵심인 주제.
+- cards: 개념을 항목별로 풀어 설명·서비스 소개·단계별. (checklist와 달리 '설명'이 중심일 때만)
+- qa: 부모가 묻고 전문가가 답하는 FAQ·궁금증 주제.
+- compare: A vs B, 오해와 진실, 치료 전후처럼 '대비'가 핵심일 때.
+- quote: 명언·부모 후기·묵직한 한 줄 메시지.
+- titleSeries: 강렬한 한 단어/한 줄 선언을 여러 개 이어붙일 때.
+- photo: 공간·시설·일상·현장 사진이 주인공일 때.
+
+중요 지침:
+1. checklist와 cards는 아무 주제에나 억지로 맞출 수 있어 남용되기 쉽습니다. 주제가 '항목 나열'이나 '항목 설명'에 정확히 해당할 때만 고르세요.
+2. 주제의 핵심 의도를 먼저 판단하세요 — 숫자가 핵심이면 bigNumber, 질문 형태면 qa, 대비가 핵심이면 compare, 감성·메시지면 quote/titleSeries, 시각·공간이면 photo를 우선 고려하세요.
+3. 애매하면 checklist·cards로 도망가지 말고, 위 8개 중 주제 의도에 가장 특화된 양식을 고르세요.
 
 주제 의도에 가장 잘 맞는 양식 1개를 골라 JSON으로만 답하세요:
 {
@@ -14025,7 +14030,8 @@ export default function ReelStudioV8() {
     if (!autoSyncMounted.current) { autoSyncMounted.current = true; return; }
     // AI 생성 중엔 충돌 방지 위해 건너뜀
     if (simpleAILoading || clarifyLoading || loading) return;
-    // clinical(AI 원고) 양식은 폼 자동반영 대상 아님
+    // clinical(AI 임상형)은 왼쪽에 slide 편집 폼이 없고 미리보기 내용편집으로만 수정하므로
+    //  자동반영을 켜면 그 편집을 덮어쓰기만 함 → 대상에서 제외
     if (formatKey === 'clinical') return;
     const template = FORMAT_TEMPLATES[formatKey];
     if (!template || typeof template.buildScenes !== 'function') return;
@@ -16456,6 +16462,16 @@ function AIForm({ draftTopic, setDraftTopic, draftContext, setDraftContext, reac
         {loading ? '생성 중...' : '✦ AI 임상 원고 생성'}
       </button>
 
+      {/* 생성 완료 후 — 수정 방법 안내 (임상형은 왼쪽 폼이 아니라 미리보기 내용편집으로 고침) */}
+      {aiContent && Array.isArray(aiContent.slides) && aiContent.slides.length > 0 && !loading && (
+        <div style={{
+          padding: 10, marginBottom: 12, background: PKL, borderRadius: 8,
+          fontSize: 11, color: PKD, lineHeight: 1.6, border: `1px solid ${PK}`,
+        }}>
+          ✎ <b>내용 수정 방법</b> — 생성된 글자는 오른쪽 미리보기에서 <b>[✎ 내용 편집]</b>을 켜고 글자를 직접 눌러서 고쳐주세요. 임상형은 왼쪽 입력칸으로는 수정되지 않아요.
+        </div>
+      )}
+
       {/* 슬라이드 만든 후 블로그 생성 버튼들 — 톤 자동 선택 + 다른 톤 추가 옵션 */}
       {aiContent && Array.isArray(aiContent.slides) && aiContent.slides.length > 0 && !loading && (() => {
         // 자동 모드 결정 (handleBlogGenerate와 동일 로직)
@@ -16661,6 +16677,9 @@ function SimpleForm({ formatKey, switchFormat, formInput, setFormInput, applyFor
       {formatKey === 'clinical' ? (
         <div style={{ padding: 12, background: PKL, borderRadius: 8, fontSize: 11, color: PKD, lineHeight: 1.7 }}>
           임상형(AI)은 [AI 임상 생성] 탭에서 주제를 입력해 자동 생성하세요. 또는 오른쪽 [양식 + 디자인]에서 다른 양식을 선택하세요.
+          <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${PK}`, fontWeight: 700 }}>
+            ✎ 생성된 내용 수정은 이 왼쪽 폼이 아니라, 미리보기에서 <b>[✎ 내용 편집]</b>을 켜고 글자를 직접 눌러서 고쳐주세요. (임상형은 왼쪽 입력칸으로는 수정되지 않아요.)
+          </div>
         </div>
       ) : (
         <>
