@@ -12242,7 +12242,7 @@ D) **부모 코칭/일반 발달**: 부모 코칭, 발달 단계, 놀이, 가족
 
 1. 이모티콘은 한 개도 넣지 마세요.
 2. 검단ABA의 색깔이 자연스럽게 묻어나게 — 자기소개 문장: **"원장이 두 자격(BCBA · 1급 언어재활사)으로 프로그램을 직접 설계·총괄합니다"** 또는 **"BCBA · 1급 언어재활사 두 자격을 보유한 원장이 운영합니다"**처럼 자연스러운 한국어 문장으로 쓰세요. ❌금지: "두 자격 기반 원장 총괄 프로그램으로 운영" 같은 어색한 명사 나열. **한 명의 원장이 BCBA와 1급 언어재활사 자격을 모두 보유**하고 있어서 한 사람이 언어와 행동 두 영역을 통합적으로 설계하고 프로그램을 총괄합니다. 단, 모든 중재를 원장 혼자 하는 것은 아닙니다. "두 분야의 전문가가 함께", "두 전문가가 협업", "언어재활사와 BCBA가 함께", "치료사와 함께", "원장의 통합 중재", "원장이 직접 모든 중재" 같은 표현은 절대 쓰지 마세요 — 사실과 다르거나 부정확한 표현입니다. **"원장 총괄"이라는 표현은 OK** (프로그램 설계·관리를 원장이 한다는 의미로 사용). 주요 영역: 의사소통, 도전적 행동, 학습 태도, 사회성. **매 회기 측정 가능한 지표로 진전을 기록하는 과학적 평가**(검단ABA에서는 이를 "회기별 진전 데이터"라고 표현해주세요. "10회 트라이얼"이라는 용어는 절대 출력하지 마세요), 개별화된 프로그램, 보호자와의 협력으로 지속 가능한 변화. 아이가 먼저 신호를 줄 때까지 기다리는 임상 철학.
-3. 센터 정보: 인천 서구 이음1로 377 눈담봄 905호, 010-8238-8132
+3. 센터 정보: 인천 검단구 이음1로 377 눈담봄 905호, 010-8238-8132
 4. 영어 직역체 절대 금지. "~할 수 있습니다", "~을 통해", "~에 대하여" 같은 번역투 안 됨. 현장에서 부모님과 마주 앉아 말하듯, 또는 임상 노트에 짧게 적듯 써주세요.
 
 **릴스 슬라이드 글자수 제한 (꼭 지켜주세요)**
@@ -13396,7 +13396,7 @@ function makeCta(input, seconds, tone) {
     slogan: '두 자격(BCBA · 1급 언어재활사) 보유 원장 운영',
     ctaText: input.ctaText || '궁금한 점 문의 주세요',
     phone: '010-8238-8132',
-    address: '인천 서구 이음1로 377 눈담봄 905호',
+    address: '인천 검단구 이음1로 377 눈담봄 905호',
     hours: '평일 09:00 - 19:00',
     instagram: '@aba_geomdan',
     blog: 'blog.naver.com/aba_geomdan',
@@ -14037,7 +14037,6 @@ export default function ReelStudioV8() {
         // 함수형 업데이트 안에서 최신 config(prev)를 읽어 stale 클로저 방지
         setConfig(prev => {
           if (!prev) return prev;                 // 아직 미리보기 없음
-          if (prev.scenesReordered) return prev;  // 순서 수동변경 시 자동반영 안 함
           let scenes = template.buildScenes(formInput);
           // 기존 미리보기의 이미지/위치/크기 커스텀 보존 (최신 prev.scenes 기준)
           scenes = mergeSceneCustomizations(scenes, prev.scenes);
@@ -16137,7 +16136,7 @@ export default function ReelStudioV8() {
                         title="이 슬라이드를 뒤로">뒤로 ▶</button>
                       {config.scenesReordered && (
                         <span style={{ fontSize: 10, color: INK_MUTE, width: '100%', textAlign: 'center', lineHeight: 1.4 }}>
-                          바꾼 순서는 그대로 유지돼요. 이대로 영상·이미지를 만드시면 됩니다. (왼쪽 폼 내용을 다시 고치려면 [▸ 릴스 생성]을 눌러야 하는데, 그러면 순서가 처음으로 돌아가요.)
+                          순서를 바꿨어요. 이 상태로 바로 영상·이미지를 만드시면 됩니다. (단, 이후 왼쪽 폼 내용을 고치면 순서가 기본으로 돌아가니, 순서는 마지막에 조정하세요.)
                         </span>
                       )}
                     </div>
@@ -17706,6 +17705,13 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
       }
     : null;
 
+  // 편집칸 높이를 내용에 맞게 자동 조절 (스크롤 없이 전체가 보이도록)
+  const autoGrow = (el) => {
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = (el.scrollHeight + 2) + 'px';
+  };
+
   // 편집 시작
   const startEditing = (e) => {
     e.stopPropagation();
@@ -17725,6 +17731,7 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
       if (textareaRef.current) {
         textareaRef.current.focus();
         textareaRef.current.select();
+        autoGrow(textareaRef.current);
       }
     }, 0);
   };
@@ -17747,7 +17754,7 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
       <textarea
         ref={textareaRef}
         value={draftValue}
-        onChange={(e) => setDraftValue(e.target.value)}
+        onChange={(e) => { setDraftValue(e.target.value); autoGrow(e.target); }}
         onBlur={finishEditing}
         onKeyDown={(e) => {
           if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) {
@@ -17763,12 +17770,17 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
           ...style,
           width: '100%',
           minHeight: '1.5em',
-          background: 'rgba(255, 240, 250, 0.9)',
+          height: 'auto',
+          background: 'rgba(255, 240, 250, 0.95)',
+          color: '#1a1a1a',          // 밝은 편집 배경 위에서 항상 잘 보이도록 어두운 글자로 강제
+          textShadow: 'none',        // 흰 글자용 그림자 제거 (편집 중 가독성)
+          WebkitTextFillColor: '#1a1a1a', // color가 흰색으로 강제된 스타일 대비
           border: '2px solid #E8788C',
           borderRadius: 4,
           padding: 4,
           outline: 'none',
-          resize: 'vertical',
+          resize: 'none',            // 수동 크기조절 핸들 제거
+          overflow: 'hidden',        // 내부 스크롤 제거 (auto-grow로 전체 표시)
           fontFamily: 'inherit',
         }}
       />
@@ -18319,7 +18331,7 @@ function CtaClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, 
   // sub가 정보 덩어리(전화/주소 포함)면 분리해서 단순 메시지로
   // — head/sub는 짧은 카피만 표시. 실제 연락처는 별도 필드/기본값으로
   const phone = scene.phone || '010-8238-8132';
-  const address = scene.address || '인천 서구 이음1로 377 눈담봄 905호';
+  const address = scene.address || '인천 검단구 이음1로 377 눈담봄 905호';
   const centerName = scene.centerName || '검단ABA언어행동연구소';
   const qualification = scene.qualification || '두 자격(BCBA · 1급 언어재활사) 보유 원장 운영';
   const ctaText = scene.ctaText || '지금 상담 예약';
@@ -22456,7 +22468,7 @@ function blogToPlainText(blog, content, mode) {
   lines.push('━━━━━━━━━━━━━━━━━━━━━━');
   lines.push('검단ABA 언어행동연구소');
   lines.push('');
-  lines.push('주소  인천 서구 이음1로 377 눈담봄 905호');
+  lines.push('주소  인천 검단구 이음1로 377 눈담봄 905호');
   lines.push('전화  010-8238-8132');
   lines.push('운영  평일 09:00 - 19:00');
   if (!isWarm) {
@@ -22951,7 +22963,7 @@ function WarmBlogView({ blog, tone, content }) {
         }}>
           <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, color: PKD, fontWeight: 600, minWidth: 48 }}>주소</span>
-            <span>인천 서구 이음1로 377 눈담봄 905호</span>
+            <span>인천 검단구 이음1로 377 눈담봄 905호</span>
           </div>
           <div style={{ display: 'flex', gap: 10, alignItems: 'baseline' }}>
             <span style={{ fontSize: 11.5, color: PKD, fontWeight: 600, minWidth: 48 }}>전화</span>
@@ -23259,7 +23271,7 @@ function ProfessionalBlogView({ blog, tone, content, showDiagram = true }) {
           gap: '10px 20px', fontSize: 13.5, lineHeight: 1.65, color: INK,
         }}>
           <div style={{ color: PKD, fontSize: 10, letterSpacing: 1, fontWeight: 600 }}>ADDRESS</div>
-          <div>인천 서구 이음1로 377 눈담봄 905호</div>
+          <div>인천 검단구 이음1로 377 눈담봄 905호</div>
           <div style={{ color: PKD, fontSize: 10, letterSpacing: 1, fontWeight: 600 }}>PHONE</div>
           <div>010-8238-8132</div>
           <div style={{ color: PKD, fontSize: 10, letterSpacing: 1, fontWeight: 600 }}>CLINICIAN</div>
