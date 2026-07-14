@@ -13728,22 +13728,46 @@ function VariantThumbnail({ variant, active, accent }) {
 // ────────────────────────────────────────────────
 export default function ReelStudioV8() {
   // ─── 로그인 관문 ───────────────────────────────
-  // 통합본과 동일 자격증명. AI(돈)·기능 보호용 1차 방어막.
-  const REELS_USER = '민다혜';
-  const REELS_PASS = 'abageomdan1121';
+  // Supabase Auth 로그인 (A방식). AI(돈)·기능 보호용 1차 방어막.
+  // 평문 비밀번호를 소스에 두지 않고, 서버(Supabase)가 검증한다.
   const [authed, setAuthed] = useState(() => {
     try { return sessionStorage.getItem('reels_authed') === '1'; } catch { return false; }
   });
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginErr, setLoginErr] = useState('');
-  const handleLogin = () => {
-    if (loginId.trim() === REELS_USER && loginPw === REELS_PASS) {
-      setAuthed(true);
-      try { sessionStorage.setItem('reels_authed', '1'); } catch {}
-      setLoginErr('');
-    } else {
-      setLoginErr('아이디 또는 비밀번호가 올바르지 않습니다.');
+  const [loginBusy, setLoginBusy] = useState(false);
+  const handleLogin = async () => {
+    const id = loginId.trim();
+    const pw = loginPw;
+    if (!id || !pw) { setLoginErr('아이디와 비밀번호를 모두 입력해주세요.'); return; }
+    setLoginBusy(true);
+    setLoginErr('');
+    try {
+      // 아이디 → 이메일 변환 (@ 있으면 그대로, 없으면 아이디@geomdan.local)
+      const email = id.indexOf('@') >= 0 ? id : (id + '@geomdan.local');
+      const res = await fetch(`https://${SUPABASE_PROJECT}.supabase.co/auth/v1/token?grant_type=password`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password: pw }),
+      });
+      const out = await res.json();
+      if (out && out.access_token && out.user) {
+        const meta = out.user.user_metadata || {};
+        if (meta.is_active === false) {
+          setLoginErr('비활성화된 계정입니다.');
+        } else {
+          setAuthed(true);
+          try { sessionStorage.setItem('reels_authed', '1'); } catch {}
+          setLoginErr('');
+        }
+      } else {
+        setLoginErr((out && (out.error_description || out.msg)) || '아이디 또는 비밀번호가 올바르지 않습니다.');
+      }
+    } catch (e) {
+      setLoginErr('서버 연결에 실패했습니다. 잠시 후 다시 시도해주세요.');
+    } finally {
+      setLoginBusy(false);
     }
   };
 
@@ -15289,12 +15313,14 @@ export default function ReelStudioV8() {
           {loginErr && <div style={{ color: '#e05a6e', fontSize: 13, marginBottom: 10 }}>{loginErr}</div>}
           <button
             onClick={handleLogin}
+            disabled={loginBusy}
             style={{
               width: '100%', padding: '14px', border: 'none', borderRadius: 12,
               background: 'linear-gradient(135deg,#E59CB0,#d97e96)', color: '#fff',
-              fontSize: 16, fontWeight: 800, cursor: 'pointer', marginTop: 4,
+              fontSize: 16, fontWeight: 800, cursor: loginBusy ? 'not-allowed' : 'pointer', marginTop: 4,
+              opacity: loginBusy ? 0.6 : 1,
             }}
-          >로그인</button>
+          >{loginBusy ? '로그인 중...' : '로그인'}</button>
           <p style={{ fontSize: 11, color: '#bbb', marginTop: 20 }}>ⓒ 민다혜 (BCBA) · 검단ABA언어행동연구소</p>
         </div>
       </div>
