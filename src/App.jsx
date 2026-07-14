@@ -14930,25 +14930,8 @@ export default function ReelStudioV8() {
     // eslint-disable-next-line
   }, [imagePool, imageMode]);
 
-  // === 현재 보고 있는 슬라이드 인덱스를 '먼저' 확정하고, scene은 그 인덱스로 가져온다 ===
-  //   (예전엔 currentScene과 currentSceneIdx를 각각 따로 계산해서 폴백이 어긋나면
-  //    화면에 보이는 슬라이드와 크기조절 대상 인덱스가 불일치 → 중간 슬라이드 크기조절 실패)
-  const currentSceneIdx = config?.scenes
-    ? (() => {
-        const scenes = config.scenes;
-        const byTime = scenes.findIndex(s => elapsed >= s.startMs && elapsed < s.endMs);
-        if (byTime >= 0) return byTime;
-        // 경계/부동소수로 못 찾으면: elapsed 이하에서 시작하는 마지막 슬라이드
-        let best = -1;
-        for (let i = 0; i < scenes.length; i++) {
-          if (elapsed >= scenes[i].startMs - 1) best = i;
-        }
-        return best >= 0 ? best : 0;
-      })()
-    : -1;
-  const currentScene = (config?.scenes && currentSceneIdx >= 0)
-    ? config.scenes[currentSceneIdx]
-    : undefined;
+  const currentScene = config?.scenes.find(s => elapsed >= s.startMs && elapsed < s.endMs)
+                    || config?.scenes[config?.scenes.length - 1];
   const sceneElapsed = currentScene ? elapsed - currentScene.startMs : 0;
   // totalMs가 0이거나 falsy면 0으로 (NaN/Infinity 방지)
   const progress = (config && config.totalMs > 0) ? (elapsed / config.totalMs) * 100 : 0;
@@ -14962,6 +14945,19 @@ export default function ReelStudioV8() {
     maxWidth: 400,
     maxHeight: 711,
   };
+
+  // === 슬라이드별 양식 변경 메뉴를 위한 현재 씬 인덱스 ===
+  // 주의: 객체 참조(===)로 찾으면 편집 저장 시 scene 객체가 새로 만들어져
+  // 인덱스가 -1이 되어 편집 내용이 화면에 반영 안 되는 버그가 생김.
+  // 그래서 시간 범위(startMs/endMs)로 인덱스를 직접 찾는다.
+  const currentSceneIdx = config?.scenes
+    ? (() => {
+        const byTime = config.scenes.findIndex(s => elapsed >= s.startMs && elapsed < s.endMs);
+        if (byTime >= 0) return byTime;
+        // 시간 범위를 못 찾으면(마지막 프레임 등) 마지막 슬라이드
+        return config.scenes.length - 1;
+      })()
+    : -1;
 
   // ─── 로그인 안 됐으면 로그인 화면만 ───────────────
   if (!authed) {
@@ -17591,7 +17587,6 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
 
   // 크기 조절 모드 (기존 동작)
   if (!editMode || sceneIndex == null) {
-    if (editMode) { try { console.log('[크기조절X]', 'fieldKey=', fieldKey, 'sceneIndex=', sceneIndex, 'editMode=', editMode); } catch(e){} }
     const Tag = element;
     return <Tag style={{ ...style, ...offsetStyle }} {...rest}>{children}</Tag>;
   }
