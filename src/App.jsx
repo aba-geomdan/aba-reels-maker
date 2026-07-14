@@ -17591,6 +17591,7 @@ function EditableText({ fieldKey, scene, sceneIndex, selectedField, setSelectedF
 
   // 크기 조절 모드 (기존 동작)
   if (!editMode || sceneIndex == null) {
+    if (editMode) { try { console.log('[크기조절X]', 'fieldKey=', fieldKey, 'sceneIndex=', sceneIndex, 'editMode=', editMode); } catch(e){} }
     const Tag = element;
     return <Tag style={{ ...style, ...offsetStyle }} {...rest}>{children}</Tag>;
   }
