@@ -13493,6 +13493,14 @@ export default function ReelStudioV8() {
     return pool;
   }
 
+  // 현재 양식에서 뽑은 풀이 비었으면 보관해둔 원본 풀로 대체 (한 번 빈 양식 거쳐도 복구)
+  function bestPool(formatK, input) {
+    const cur = extractTextPool(formatK, input);
+    const hasContent = cur.some(p => (p.head && p.head.trim()) || (p.body && p.body.trim()));
+    if (hasContent) return cur;
+    return (sourcePool && sourcePool.length) ? sourcePool : cur;
+  }
+
   // 3) 풀을 새 양식 데이터 모양으로 주입
   function injectTextPool(targetFormat, pool) {
     if (!pool || pool.length === 0) return null;
@@ -13566,7 +13574,7 @@ export default function ReelStudioV8() {
         formatKey, formInput, activeVariantId, layoutKey
       };
       // 텍스트 풀 추출 + 새 양식에 매핑
-      const pool = extractTextPool(formatKey, formInput);
+      const pool = bestPool(formatKey, formInput);
       const injected = injectTextPool(newFormatKey, pool);
       newFormInput = {
         ...DEFAULT_INPUTS[newFormatKey],
@@ -13639,6 +13647,8 @@ export default function ReelStudioV8() {
   const [reachMode, setReachMode] = useState(false);
   const [loading, setLoading] = useState(false);
   const [aiContent, setAiContent] = useState(null);
+  // 양식 전환 시 내용 손실 방지용 원본 텍스트 풀 (한 번 빈 양식을 거쳐도 복구 가능)
+  const [sourcePool, setSourcePool] = useState([]);
   // 블로그 분할 생성 (슬라이드 만든 후 별도로 호출)
   const [blogLoading, setBlogLoading] = useState(false);
 
@@ -13872,6 +13882,8 @@ export default function ReelStudioV8() {
         reachMode, // 도달형(4장)이면 도식 숨김에 사용
       };
       setFormInput(nextInput);
+      // 양식 전환 대비 원본 풀 보관 (clinical slides 기준)
+      setSourcePool(extractTextPool('clinical', nextInput));
       // 즉시 빌드
       const scenes = FORMAT_TEMPLATES.clinical.buildScenes(nextInput);
       processConfig({
@@ -14001,7 +14013,7 @@ export default function ReelStudioV8() {
         const rec = await recommendFormatForTopic(topic, formatKey);
         // 추천된 양식이 실제로 존재하는지 검증
         const validFormats = Object.keys(FORMAT_SCHEMA);
-        if (rec.recommended && validFormats.includes(rec.recommended) && rec.recommended !== formatKey && !rec.currentIsOk) {
+        if (rec.recommended && validFormats.includes(rec.recommended) && rec.recommended !== formatKey) {
           actualFormatKey = rec.recommended;
           actualFormInput = {
             ...DEFAULT_INPUTS[rec.recommended],
@@ -14061,6 +14073,8 @@ export default function ReelStudioV8() {
         userTopic: topic,
       };
       setFormInput(merged);
+      // 양식 전환 대비 원본 풀 보관 (생성된 양식 기준)
+      setSourcePool(extractTextPool(actualFormatKey, merged));
       // 자동으로 즉시 릴스 빌드 + 이미지 배분
       const template = FORMAT_TEMPLATES[actualFormatKey];
       let scenes = template.buildScenes(merged);
@@ -14145,7 +14159,7 @@ export default function ReelStudioV8() {
   function switchFormat(key) {
     if (key === formatKey) { setFormatKey(key); return; }
     // 양식 전환 시 기존 내용 보존 (applyVariant와 동일 방식)
-    const pool = extractTextPool(formatKey, formInput);
+    const pool = bestPool(formatKey, formInput);
     const injected = injectTextPool(key, pool);
     const nextInput = {
       ...DEFAULT_INPUTS[key],
