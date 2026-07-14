@@ -13481,7 +13481,8 @@ export default function ReelStudioV8() {
   function extractTextPool(formatK, input) {
     if (!input) return [];
     const pool = [];
-    if (formatK === 'checklist') (input.items||[]).forEach(it => it.text && pool.push({head: it.category || '', body: it.text}));
+    if (formatK === 'clinical') (input.slides||[]).forEach(s => { if (s.kind !== 'cta' && (s.head || s.sub)) pool.push({head: (s.head||'').replace(/\n/g,' '), body: s.sub || ''}); });
+    else if (formatK === 'checklist') (input.items||[]).forEach(it => it.text && pool.push({head: it.category || '', body: it.text}));
     else if (formatK === 'bigNumber') (input.numbers||[]).forEach(n => pool.push({head: n.number || n.label || '', body: n.desc || n.label || ''}));
     else if (formatK === 'quote') (input.quotes||[]).forEach(q => q.text && pool.push({head: q.text, body: q.attribution || ''}));
     else if (formatK === 'compare') (input.comparisons||[]).forEach(c => pool.push({head: c.left || '', body: c.right || ''}));
