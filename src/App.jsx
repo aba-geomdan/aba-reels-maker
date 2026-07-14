@@ -14479,8 +14479,13 @@ export default function ReelStudioV8() {
     startRef.current = null;
     const target = config.scenes[idx];
     if (!target) return;
-    // 해당 슬라이드 시작 + 50ms (구간 경계 부동소수 안전 마진)
-    setElapsed(target.startMs + 50);
+    // 정지(편집) 상태에서는 등장 애니메이션이 끝난 지점으로 이동해야
+    // 모든 텍스트가 보이고 크기조절 클릭이 먹는다. (startMs+50이면 중간 슬라이드가
+    // sceneElapsed=50ms에 멈춰 대부분 opacity:0 → 점선/클릭 안 붙던 버그)
+    // 구간을 벗어나지 않게 90% 지점 또는 startMs+2500 중 작은 쪽으로 클램프.
+    const dur = target.endMs - target.startMs;
+    const settle = Math.min(dur * 0.9, 2500);
+    setElapsed(target.startMs + Math.max(50, settle));
   }
   function gotoPrevScene() {
     if (!config) return;
