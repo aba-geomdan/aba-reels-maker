@@ -14143,8 +14143,25 @@ export default function ReelStudioV8() {
   }
 
   function switchFormat(key) {
+    if (key === formatKey) { setFormatKey(key); return; }
+    // 양식 전환 시 기존 내용 보존 (applyVariant와 동일 방식)
+    const pool = extractTextPool(formatKey, formInput);
+    const injected = injectTextPool(key, pool);
+    const nextInput = {
+      ...DEFAULT_INPUTS[key],
+      // 공통 필드 보존
+      topic: formInput.topic || DEFAULT_INPUTS[key].topic,
+      length: formInput.length || DEFAULT_INPUTS[key].length,
+      tone: formInput.tone || DEFAULT_INPUTS[key].tone,
+      hookTitle: formInput.hookTitle || DEFAULT_INPUTS[key].hookTitle,
+      hookSub: formInput.hookSub !== undefined ? formInput.hookSub : DEFAULT_INPUTS[key].hookSub,
+      ctaText: formInput.ctaText || DEFAULT_INPUTS[key].ctaText,
+      hashtags: formInput.hashtags || DEFAULT_INPUTS[key].hashtags,
+      // 양식 고유 데이터: 매핑된 것으로 (없으면 기본값)
+      ...(injected || {}),
+    };
     setFormatKey(key);
-    setFormInput(DEFAULT_INPUTS[key]);
+    setFormInput(nextInput);
   }
 
   // === 슬라이드별 양식 오버라이드 (v5 + v7 제어권의 우선순위 핵심) ===
