@@ -13493,12 +13493,22 @@ export default function ReelStudioV8() {
     return pool;
   }
 
-  // 현재 양식에서 뽑은 풀이 비었으면 보관해둔 원본 풀로 대체 (한 번 빈 양식 거쳐도 복구)
+  // 현재 양식에서 뽑은 풀이 비었거나, 원본보다 내용이 크게 줄었으면(quote 등에서
+  // body가 날아간 경우) 보관해둔 원본 풀로 복구한다.
   function bestPool(formatK, input) {
     const cur = extractTextPool(formatK, input);
     const hasContent = cur.some(p => (p.head && p.head.trim()) || (p.body && p.body.trim()));
-    if (hasContent) return cur;
-    return (sourcePool && sourcePool.length) ? sourcePool : cur;
+    const src = (sourcePool && sourcePool.length) ? sourcePool : null;
+    // 총 글자수로 내용량 비교
+    const charCount = (pool) => (pool || []).reduce((n, p) => n + ((p.head||'').length + (p.body||'').length), 0);
+    if (!hasContent) return src || cur;
+    if (src) {
+      const curLen = charCount(cur);
+      const srcLen = charCount(src);
+      // 현재가 원본의 60% 미만으로 쪼그라들었으면(축소로 판단) 원본 복구
+      if (srcLen > 0 && curLen < srcLen * 0.6) return src;
+    }
+    return cur;
   }
 
   // 3) 풀을 새 양식 데이터 모양으로 주입
@@ -13519,7 +13529,12 @@ export default function ReelStudioV8() {
       return { numbers };
     }
     if (targetFormat === 'quote') {
-      const quotes = pool.slice(0, 3).map(p => ({ text: p.head || p.body || '', attribution: null }));
+      // head(질문/제목)와 body(답변/설명)를 모두 보존 — 예전엔 head만 쓰고 body를 버려
+      // Q&A → 인용 전환 시 답변이 통째로 사라졌다. 둘 다 있으면 줄바꿈으로 합친다.
+      const quotes = pool.slice(0, 3).map(p => {
+        const parts = [p.head, p.body].map(x => (x || '').trim()).filter(Boolean);
+        return { text: parts.join('\n') || '', attribution: null };
+      });
       while (quotes.length < 3) quotes.push({ text: '메시지를 입력하세요', attribution: null });
       return { quotes };
     }
