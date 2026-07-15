@@ -14161,10 +14161,6 @@ export default function ReelStudioV8() {
     // 양식 전환 시 기존 내용 보존 (applyVariant와 동일 방식)
     const pool = bestPool(formatKey, formInput);
     const injected = injectTextPool(key, pool);
-    console.log('%c[릴스디버그] 양식전환 '+formatKey+' → '+key, 'color:#D4728A;font-weight:bold');
-    console.log('[릴스디버그] 전환 전 formInput:', JSON.stringify(formInput));
-    console.log('[릴스디버그] 뽑아낸 pool(내용):', JSON.stringify(pool));
-    console.log('[릴스디버그] 새 양식으로 변환된 결과:', JSON.stringify(injected));
     const nextInput = {
       ...DEFAULT_INPUTS[key],
       // 공통 필드 보존
@@ -14812,12 +14808,20 @@ export default function ReelStudioV8() {
       const stopPromise = new Promise((resolve) => { recorder.onstop = () => resolve(); });
       let recordStartTs = 0; // 첫 슬라이드를 canvas에 그린 뒤 녹화 시작 (흰 커버 프레임 방지)
 
-      // 각 슬라이드 순회 → DOM 캡처 → canvas에 그리기 → 일정 시간 유지
-      console.log('%c[릴스디버그] 영상생성 시작 — 슬라이드 '+total+'개', 'color:#D4728A;font-weight:bold');
-      config.scenes.forEach((s, i) => {
-        console.log(`[릴스디버그] 슬라이드 ${i+1}: type=${s.type} seconds=${s.seconds} index=${s.index||'-'} q="${(s.question||s.text||s.title||'').slice(0,15)}" a="${(s.answer||s.body||s.sub||'').slice(0,15)}"`);
+      // 각 슬라이드 표시 시간 = 그 슬라이드의 실제 seconds(사용자가 설정한 길이).
+      // 예전엔 PER_SCENE_MS(3.3초)로 고정돼서 30초/60초/15초 설정과 무관하게
+      // 항상 같은 길이로 저장됐고, seconds가 긴 Q&A 슬라이드는 등장 애니메이션이
+      // 다 뜨기도 전에 넘어가 텍스트가 안 찍혔다. 실제 seconds를 쓰도록 수정.
+      // (seconds가 없거나 비정상이면 PER_SCENE_MS로 안전 폴백, 최소 2.5초 보장)
+      const sceneMsArr = config.scenes.map(s => {
+        const sec = Number(s.seconds);
+        const ms = (Number.isFinite(sec) && sec > 0) ? sec * 1000 : PER_SCENE_MS;
+        return Math.max(2500, ms);
       });
-      const __dbgStart = Date.now();
+      const grandTotalMs = sceneMsArr.reduce((a, b) => a + b, 0);
+      let elapsedBeforeMs = 0;
+
+      // 각 슬라이드 순회 → DOM 캡처 → canvas에 그리기 → 일정 시간 유지
       for (let i = 0; i < total; i++) {
         if (stopped) break;
         gotoScene(i);
@@ -14826,6 +14830,12 @@ export default function ReelStudioV8() {
         await new Promise(r => requestAnimationFrame(() => requestAnimationFrame(r)));
         await new Promise(r => setTimeout(r, 800));
         const target = document.getElementById('reels-capture-target');
+
+        // 이 슬라이드의 캡처 이미지와 그리기 위치 — 대기 루프에서 매 프레임 재사용해
+        // canvas를 계속 갱신한다(고정 화면이라도). 그래야 MediaRecorder가 30fps로
+        // 촘촘한 프레임을 받아 영상 시간축이 실제 시간과 일치한다. (예전엔 canvas가
+        // 안 바뀌어 프레임이 띄엄띄엄 → 시간축이 늘어나거나 줄어 17초/139초로 왜곡됨)
+        let frameImg = null, frameRect = null;
 
         try {
           const blob = await dlCaptureNode(target);
@@ -14846,6 +14856,7 @@ export default function ReelStudioV8() {
             if (ar > targetAr) { dw = W; dh = W / ar; dx = 0; dy = (H - dh) / 2; }
             else { dh = H; dw = H * ar; dx = (W - dw) / 2; dy = 0; }
             ctx.drawImage(img, dx, dy, dw, dh);
+            frameImg = img; frameRect = { dx, dy, dw, dh };
             URL.revokeObjectURL(url);
             // 첫 슬라이드를 canvas에 그린 바로 그 순간 녹화 시작 → 0초부터 첫 슬라이드가 커버로 잡힘
             if (i === 0 && recorder.state === 'inactive') {
@@ -14874,20 +14885,29 @@ export default function ReelStudioV8() {
           if (!recordStartTs) recordStartTs = Date.now();
         }
 
-        // 슬라이드 유지 — 30fps 자동 캡처가 이 시간만큼 프레임을 채운다.
-        // (canvas 내용이 고정돼 있으므로 그 시간 동안 같은 화면이 녹화됨)
-        const sceneMs = PER_SCENE_MS + (i === total - 1 ? LAST_SCENE_EXTRA_MS : 0);
-        const totalMs = total * PER_SCENE_MS + LAST_SCENE_EXTRA_MS;
+        // 슬라이드 유지 — 대기 시간 동안 매 애니메이션 프레임마다 같은 이미지를
+        // canvas에 다시 그린다. canvas가 "변한다"고 인식돼야 captureStream이 30fps로
+        // 프레임을 계속 뽑아내고, 그 결과 영상 시간축이 실제 시간과 정확히 맞는다.
+        const sceneMs = sceneMsArr[i];
         const startWait = Date.now();
-        while (Date.now() - startWait < sceneMs) {
-          await new Promise(r => setTimeout(r, 100));
-          const progressMs = i * PER_SCENE_MS + (Date.now() - startWait);
-          setVidProgress(Math.min(99, Math.round((progressMs / totalMs) * 100)));
-          if (stopped) break;
-        }
-        console.log(`[릴스디버그] 슬라이드 ${i+1} 완료 — 여기까지 누적 ${((Date.now()-__dbgStart)/1000).toFixed(1)}초`);
+        await new Promise((resolveWait) => {
+          const tick = () => {
+            const elapsedWait = Date.now() - startWait;
+            // 같은 슬라이드 이미지를 매 프레임 재draw (캡처 실패 시 frameImg가 null이면 skip)
+            if (frameImg && frameRect) {
+              ctx.fillStyle = '#ffffff';
+              ctx.fillRect(0, 0, W, H);
+              ctx.drawImage(frameImg, frameRect.dx, frameRect.dy, frameRect.dw, frameRect.dh);
+            }
+            const progressMs = elapsedBeforeMs + elapsedWait;
+            setVidProgress(Math.min(99, Math.round((progressMs / grandTotalMs) * 100)));
+            if (stopped || elapsedWait >= sceneMs) { resolveWait(); return; }
+            requestAnimationFrame(tick);
+          };
+          requestAnimationFrame(tick);
+        });
+        elapsedBeforeMs += sceneMs;
       }
-      console.log('%c[릴스디버그] 전체 녹화 루프 종료 — 총 '+((Date.now()-__dbgStart)/1000).toFixed(1)+'초', 'color:#D4728A;font-weight:bold');
 
       // 마지막 여운 — 자동 캡처가 마무리 프레임을 담도록 잠깐 대기
       await new Promise(r => setTimeout(r, 200));
@@ -14896,6 +14916,7 @@ export default function ReelStudioV8() {
       await stopPromise;
 
       let videoBlob = new Blob(chunks, { type: isMp4 ? 'video/mp4' : 'video/webm' });
+      console.log('%c[릴스디버그] 녹화 실측 시간: '+((Date.now()-recordStartTs)/1000).toFixed(1)+'초 · blob크기: '+(videoBlob.size/1024).toFixed(0)+'KB · 형식: '+(isMp4?'mp4':'webm'), 'color:#D4728A;font-weight:bold');
       if (videoBlob.size < 1000) {
         showToast('영상 녹화 차단됨 (artifact 환경 한계) — 깃허브 배포본에선 작동합니다', 'warning', 7000);
       } else {
@@ -21357,7 +21378,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           element="div"
           style={{
             ...fadeUp(isShortScene ? 400 : 800),
-            fontSize: Math.round(qSize * 1.2 * getFS('q')), fontWeight: 900,
+            fontSize: Math.round(qSize * 1.2 * getFS('question')), fontWeight: 900,
             lineHeight: 1.35, color: theme.text,
             letterSpacing: '-0.025em',
             whiteSpace: 'pre-line', wordBreak: 'keep-all',
@@ -21370,7 +21391,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             ...fadeUp(isShortScene ? 800 : 1400),
             background: '#fff', borderRadius: 24,
             padding: '18px 22px',
-            fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.65,
+            fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.65,
             color: theme.text, fontWeight: 500,
             boxShadow: '0 4px 18px rgba(0,0,0,0.1)',
             maxWidth: '92%', textAlign: 'left',
@@ -21433,7 +21454,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           element="div"
           style={{
             ...fadeUp(isShortScene ? 400 : 800),
-            fontSize: Math.round(qSize * 1.15 * getFS('q')), fontWeight: 900,
+            fontSize: Math.round(qSize * 1.15 * getFS('question')), fontWeight: 900,
             lineHeight: 1.35, color: theme.text,
             letterSpacing: '-0.02em', whiteSpace: 'pre-line', wordBreak: 'keep-all',
             marginBottom: 24, zIndex: 2,
@@ -21445,7 +21466,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             ...fadeUp(isShortScene ? 800 : 1400),
             background: '#fff', borderRadius: 24,
             padding: '16px 22px',
-            fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.65,
+            fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.65,
             color: theme.text, fontWeight: 500,
             boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
             maxWidth: '94%', textAlign: 'left',
@@ -21509,7 +21530,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             element="div"
             style={{
               ...fadeUp(isShortScene ? 400 : 800),
-              fontSize: Math.round(qSize * 0.92 * getFS('q')), fontWeight: 900,
+              fontSize: Math.round(qSize * 0.92 * getFS('question')), fontWeight: 900,
               lineHeight: 1.35, color: theme.text,
               letterSpacing: '-0.02em', whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.question}</EditableText>
@@ -21521,7 +21542,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             element="div"
             style={{
               ...fadeIn(isShortScene ? 900 : 1500),
-              fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.65,
+              fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.65,
               color: theme.text, fontWeight: 500,
               whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.answer}</EditableText>
@@ -21560,7 +21581,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             element="div"
             style={{
               ...fadeUp(isShortScene ? 300 : 700),
-              fontSize: Math.round(qSize * 1.05 * getFS('q')), fontWeight: 900,
+              fontSize: Math.round(qSize * 1.05 * getFS('question')), fontWeight: 900,
               lineHeight: 1.3, color: '#fff',
               letterSpacing: '-0.02em', whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.question}</EditableText>
@@ -21581,7 +21602,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           <EditableText fieldKey="answer" {...editProps}
             element="div"
             style={{
-              fontSize: Math.round(aSize * 1.05 * getFS('a')), lineHeight: 1.7,
+              fontSize: Math.round(aSize * 1.05 * getFS('answer')), lineHeight: 1.7,
               color: theme.text, fontWeight: 500,
               whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.answer}</EditableText>
@@ -21665,7 +21686,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         element="div"
         style={{
           ...fadeUp(isShortScene ? 200 : 600),
-          fontSize: Math.round(qSize * getFS('q')), fontWeight: theme.fontWeight.bold,
+          fontSize: Math.round(qSize * getFS('question')), fontWeight: theme.fontWeight.bold,
           lineHeight: 1.35, color: theme.text,
           whiteSpace: 'pre-line', wordBreak: 'keep-all',
           marginBottom: 22,
@@ -21712,7 +21733,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         <EditableText fieldKey="answer" {...editProps}
           element="div"
           style={{
-            fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.7,
+            fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.7,
             color: theme.text, whiteSpace: 'pre-line',
             wordBreak: 'keep-all',
             fontWeight: theme.fontWeight.regular,
