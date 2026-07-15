@@ -14161,6 +14161,10 @@ export default function ReelStudioV8() {
     // 양식 전환 시 기존 내용 보존 (applyVariant와 동일 방식)
     const pool = bestPool(formatKey, formInput);
     const injected = injectTextPool(key, pool);
+    console.log('%c[릴스디버그] 양식전환 '+formatKey+' → '+key, 'color:#D4728A;font-weight:bold');
+    console.log('[릴스디버그] 전환 전 formInput:', JSON.stringify(formInput));
+    console.log('[릴스디버그] 뽑아낸 pool(내용):', JSON.stringify(pool));
+    console.log('[릴스디버그] 새 양식으로 변환된 결과:', JSON.stringify(injected));
     const nextInput = {
       ...DEFAULT_INPUTS[key],
       // 공통 필드 보존
@@ -14809,6 +14813,11 @@ export default function ReelStudioV8() {
       let recordStartTs = 0; // 첫 슬라이드를 canvas에 그린 뒤 녹화 시작 (흰 커버 프레임 방지)
 
       // 각 슬라이드 순회 → DOM 캡처 → canvas에 그리기 → 일정 시간 유지
+      console.log('%c[릴스디버그] 영상생성 시작 — 슬라이드 '+total+'개', 'color:#D4728A;font-weight:bold');
+      config.scenes.forEach((s, i) => {
+        console.log(`[릴스디버그] 슬라이드 ${i+1}: type=${s.type} seconds=${s.seconds} index=${s.index||'-'} q="${(s.question||s.text||s.title||'').slice(0,15)}" a="${(s.answer||s.body||s.sub||'').slice(0,15)}"`);
+      });
+      const __dbgStart = Date.now();
       for (let i = 0; i < total; i++) {
         if (stopped) break;
         gotoScene(i);
@@ -14876,7 +14885,9 @@ export default function ReelStudioV8() {
           setVidProgress(Math.min(99, Math.round((progressMs / totalMs) * 100)));
           if (stopped) break;
         }
+        console.log(`[릴스디버그] 슬라이드 ${i+1} 완료 — 여기까지 누적 ${((Date.now()-__dbgStart)/1000).toFixed(1)}초`);
       }
+      console.log('%c[릴스디버그] 전체 녹화 루프 종료 — 총 '+((Date.now()-__dbgStart)/1000).toFixed(1)+'초', 'color:#D4728A;font-weight:bold');
 
       // 마지막 여운 — 자동 캡처가 마무리 프레임을 담도록 잠깐 대기
       await new Promise(r => setTimeout(r, 200));
@@ -21346,7 +21357,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           element="div"
           style={{
             ...fadeUp(isShortScene ? 400 : 800),
-            fontSize: Math.round(qSize * 1.2 * getFS('question')), fontWeight: 900,
+            fontSize: Math.round(qSize * 1.2 * getFS('q')), fontWeight: 900,
             lineHeight: 1.35, color: theme.text,
             letterSpacing: '-0.025em',
             whiteSpace: 'pre-line', wordBreak: 'keep-all',
@@ -21359,7 +21370,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             ...fadeUp(isShortScene ? 800 : 1400),
             background: '#fff', borderRadius: 24,
             padding: '18px 22px',
-            fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.65,
+            fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.65,
             color: theme.text, fontWeight: 500,
             boxShadow: '0 4px 18px rgba(0,0,0,0.1)',
             maxWidth: '92%', textAlign: 'left',
@@ -21422,7 +21433,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           element="div"
           style={{
             ...fadeUp(isShortScene ? 400 : 800),
-            fontSize: Math.round(qSize * 1.15 * getFS('question')), fontWeight: 900,
+            fontSize: Math.round(qSize * 1.15 * getFS('q')), fontWeight: 900,
             lineHeight: 1.35, color: theme.text,
             letterSpacing: '-0.02em', whiteSpace: 'pre-line', wordBreak: 'keep-all',
             marginBottom: 24, zIndex: 2,
@@ -21434,7 +21445,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             ...fadeUp(isShortScene ? 800 : 1400),
             background: '#fff', borderRadius: 24,
             padding: '16px 22px',
-            fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.65,
+            fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.65,
             color: theme.text, fontWeight: 500,
             boxShadow: '0 4px 16px rgba(0,0,0,0.08)',
             maxWidth: '94%', textAlign: 'left',
@@ -21498,7 +21509,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             element="div"
             style={{
               ...fadeUp(isShortScene ? 400 : 800),
-              fontSize: Math.round(qSize * 0.92 * getFS('question')), fontWeight: 900,
+              fontSize: Math.round(qSize * 0.92 * getFS('q')), fontWeight: 900,
               lineHeight: 1.35, color: theme.text,
               letterSpacing: '-0.02em', whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.question}</EditableText>
@@ -21510,7 +21521,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             element="div"
             style={{
               ...fadeIn(isShortScene ? 900 : 1500),
-              fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.65,
+              fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.65,
               color: theme.text, fontWeight: 500,
               whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.answer}</EditableText>
@@ -21549,7 +21560,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             element="div"
             style={{
               ...fadeUp(isShortScene ? 300 : 700),
-              fontSize: Math.round(qSize * 1.05 * getFS('question')), fontWeight: 900,
+              fontSize: Math.round(qSize * 1.05 * getFS('q')), fontWeight: 900,
               lineHeight: 1.3, color: '#fff',
               letterSpacing: '-0.02em', whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.question}</EditableText>
@@ -21570,7 +21581,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           <EditableText fieldKey="answer" {...editProps}
             element="div"
             style={{
-              fontSize: Math.round(aSize * 1.05 * getFS('answer')), lineHeight: 1.7,
+              fontSize: Math.round(aSize * 1.05 * getFS('a')), lineHeight: 1.7,
               color: theme.text, fontWeight: 500,
               whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.answer}</EditableText>
@@ -21654,7 +21665,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         element="div"
         style={{
           ...fadeUp(isShortScene ? 200 : 600),
-          fontSize: Math.round(qSize * getFS('question')), fontWeight: theme.fontWeight.bold,
+          fontSize: Math.round(qSize * getFS('q')), fontWeight: theme.fontWeight.bold,
           lineHeight: 1.35, color: theme.text,
           whiteSpace: 'pre-line', wordBreak: 'keep-all',
           marginBottom: 22,
@@ -21701,7 +21712,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         <EditableText fieldKey="answer" {...editProps}
           element="div"
           style={{
-            fontSize: Math.round(aSize * getFS('answer')), lineHeight: 1.7,
+            fontSize: Math.round(aSize * getFS('a')), lineHeight: 1.7,
             color: theme.text, whiteSpace: 'pre-line',
             wordBreak: 'keep-all',
             fontWeight: theme.fontWeight.regular,
