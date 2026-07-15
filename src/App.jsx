@@ -14543,15 +14543,6 @@ export default function ReelStudioV8() {
     if (!config) return;
     if (!startRef.current) startRef.current = ts;
     const e = ts - startRef.current;
-    // [릴스디버그] 재생 중 현재 슬라이드가 바뀌면 그 슬라이드 정보 출력
-    try {
-      const ci = config.scenes.findIndex(s => e >= s.startMs && e < s.endMs);
-      if (ci >= 0 && ci !== window.__dbgLastSceneIdx) {
-        const s = config.scenes[ci];
-        console.log(`[릴스디버그·재생] 슬라이드 ${ci+1} 진입 · type=${s.type} index=${s.index||'-'} seconds=${s.seconds} 구간=${(s.startMs/1000).toFixed(1)}~${(s.endMs/1000).toFixed(1)}초 (머무는시간 ${((s.endMs-s.startMs)/1000).toFixed(1)}초)`);
-        window.__dbgLastSceneIdx = ci;
-      }
-    } catch(_) {}
     setElapsed(Math.min(e, config.totalMs));
     if (e < config.totalMs) rafRef.current = requestAnimationFrame(tick);
     else setIsPlaying(false);
@@ -14925,7 +14916,6 @@ export default function ReelStudioV8() {
       await stopPromise;
 
       let videoBlob = new Blob(chunks, { type: isMp4 ? 'video/mp4' : 'video/webm' });
-      console.log('%c[릴스디버그] 녹화 실측 시간: '+((Date.now()-recordStartTs)/1000).toFixed(1)+'초 · blob크기: '+(videoBlob.size/1024).toFixed(0)+'KB · 형식: '+(isMp4?'mp4':'webm'), 'color:#D4728A;font-weight:bold');
       if (videoBlob.size < 1000) {
         showToast('영상 녹화 차단됨 (artifact 환경 한계) — 깃허브 배포본에선 작동합니다', 'warning', 7000);
       } else {
@@ -21574,12 +21564,13 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
             }}/>
           ))}
         </div>
-        {/* 위쪽 50% 색 영역 — 큰 질문 */}
+        {/* 위쪽 색 영역 — 큰 질문 (질문이 흰 답변카드에 가려지지 않도록 화면 위 절반에 고정 배치) */}
         <div style={{
           position: 'absolute', top: 0, left: 0, right: 0, height: '50%',
           background: `linear-gradient(135deg, ${theme.primary} 0%, ${theme.primaryDeep || theme.primary} 100%)`,
-          padding: '95px 22px 24px', display: 'flex',
-          flexDirection: 'column', justifyContent: 'flex-end',
+          padding: '95px 22px 28px', display: 'flex',
+          flexDirection: 'column', justifyContent: 'center',
+          overflow: 'hidden', zIndex: 1,
         }}>
           <div style={{
             ...fadeIn(0),
@@ -21595,12 +21586,12 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
               letterSpacing: '-0.02em', whiteSpace: 'pre-line', wordBreak: 'keep-all',
             }}>{scene.question}</EditableText>
         </div>
-        {/* 아래쪽 흰 카드 — 답 */}
+        {/* 아래쪽 흰 카드 — 답 (위 질문 영역과 겹치지 않도록 화면 아래 절반에 고정) */}
         <div style={{
           ...fadeUp(isShortScene ? 700 : 1300),
-          position: 'absolute', bottom: 0, left: 0, right: 0,
+          position: 'absolute', top: '50%', bottom: 0, left: 0, right: 0,
           padding: '38px 24px 70px', background: '#fff',
-          minHeight: '50%',
+          overflow: 'hidden', zIndex: 2,
         }}>
           <div style={{
             display: 'inline-block', padding: '4px 12px',
