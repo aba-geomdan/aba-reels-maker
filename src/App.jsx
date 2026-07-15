@@ -14543,6 +14543,15 @@ export default function ReelStudioV8() {
     if (!config) return;
     if (!startRef.current) startRef.current = ts;
     const e = ts - startRef.current;
+    // [릴스디버그] 재생 중 현재 슬라이드가 바뀌면 그 슬라이드 정보 출력
+    try {
+      const ci = config.scenes.findIndex(s => e >= s.startMs && e < s.endMs);
+      if (ci >= 0 && ci !== window.__dbgLastSceneIdx) {
+        const s = config.scenes[ci];
+        console.log(`[릴스디버그·재생] 슬라이드 ${ci+1} 진입 · type=${s.type} index=${s.index||'-'} seconds=${s.seconds} 구간=${(s.startMs/1000).toFixed(1)}~${(s.endMs/1000).toFixed(1)}초 (머무는시간 ${((s.endMs-s.startMs)/1000).toFixed(1)}초)`);
+        window.__dbgLastSceneIdx = ci;
+      }
+    } catch(_) {}
     setElapsed(Math.min(e, config.totalMs));
     if (e < config.totalMs) rafRef.current = requestAnimationFrame(tick);
     else setIsPlaying(false);
