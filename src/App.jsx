@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
+import { flushSync } from 'react-dom';
 
 // ============================================
 // 도메인 가드 (무단 배포 방지)
@@ -1444,6 +1445,16 @@ const suggestFormatForTopic = (topic) => {
 // ────────────────────────────────────────────────
 
 // 시드 헬퍼: 주제 문자열을 안정적인 숫자로 (도식별 데이터 변주에 사용)
+// 긴 문구를 가운데 띄어쓰기에서 두 줄로 나눔 (칸이 좁은 도식에서 글자가 삐져나오지 않게)
+const _split2 = (str) => {
+  const t = String(str || '');
+  const sp = [];
+  for (let i = 0; i < t.length; i++) if (t[i] === ' ') sp.push(i);
+  if (!sp.length) return [t];
+  const mid = t.length / 2;
+  const k = sp.reduce((a, b) => (Math.abs(b - mid) < Math.abs(a - mid) ? b : a));
+  return [t.slice(0, k), t.slice(k + 1)];
+};
 const _hashSeed = (str) => {
   if (!str) return 0;
   let h = 0;
@@ -1614,18 +1625,18 @@ const TrialStackBar = ({ tone, data }) => {
         background: tone.soft, borderRadius:5, overflow:'hidden',
         border:`1px solid ${tone.line}`,
       }}>
-        <div style={{
-          width: `${mastered/total*100}%`, background: tone.accentDeep, color:'#fff',
-          fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:600,
-        }}>{mastered}</div>
-        <div style={{
-          width: `${ongoing/total*100}%`, background: tone.line, color: INK,
-          fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:600,
-        }}>{ongoing}</div>
-        <div style={{
-          width: `${paused/total*100}%`, background: tone.accent, color: tone.accentDeep,
-          fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:600,
-        }}>{paused}</div>
+        {/* 0회인 칸은 그리지 않고, 너무 좁은 칸은 숫자를 숨김 (칸 밖으로 숫자가 삐져나오던 문제) */}
+        {[
+          { n: mastered, bg: tone.accentDeep, fg: '#fff' },
+          { n: ongoing, bg: tone.line, fg: INK },
+          { n: paused, bg: tone.accent, fg: tone.accentDeep },
+        ].filter(seg => seg.n > 0).map((seg, k) => (
+          <div key={k} style={{
+            width: `${seg.n/total*100}%`, background: seg.bg, color: seg.fg,
+            fontSize:9.5, display:'flex', alignItems:'center', justifyContent:'center', fontWeight:600,
+            overflow:'hidden', whiteSpace:'nowrap',
+          }}>{seg.n/total >= 0.08 ? seg.n : ''}</div>
+        ))}
       </div>
       <div style={{ fontSize:9, color: INK_MUTE, marginTop:4, display:'flex', gap:8, justifyContent:'center' }}>
         <span style={{ color: tone.accentDeep, fontWeight:600 }}>● 마스터 {mastered}</span>
@@ -1655,7 +1666,8 @@ const TrendLineSVG = ({ tone, data = [0.4, 0.8, 1.4, 2.1, 2.8, 3.2], threshold =
       <text x={padL} y={14} fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600">{label}</text>
       <line x1={padL} y1={thresholdY} x2={padL + innerW} y2={thresholdY}
         stroke={tone.accentDeep} strokeWidth="0.6" strokeDasharray="3 3" opacity="0.5"/>
-      <text x={padL + innerW} y={thresholdY - 3} textAnchor="end" fontSize="8" fontFamily="Pretendard" fill={tone.accentDeep}>
+      {/* 목표 라벨은 그래프가 낮은 왼쪽에 (오른쪽 끝 점·숫자와 겹치던 문제) */}
+      <text x={padL + 2} y={thresholdY - 3} textAnchor="start" fontSize="8" fontFamily="Pretendard" fill={tone.accentDeep}>
         목표 {threshold}s
       </text>
       <path d={areaD} fill={tone.accent} opacity="0.55"/>
@@ -2054,7 +2066,7 @@ const GoldenWindow = ({ tone, data }) => {
       </text>
       <line x1={20} y1={75} x2={280} y2={75} stroke={tone.line} strokeWidth="1"/>
       <rect x={100} y={51} width={100} height={48} rx={8} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="1"/>
-      <line x1={150} y1={31} x2={150} y2={103} stroke={tone.accentDeep} strokeWidth="1.5"/>
+      <line x1={150} y1={49} x2={150} y2={103} stroke={tone.accentDeep} strokeWidth="1.5"/>
       <text x={150} y={45} textAnchor="middle" fontSize="13" fontFamily="Pretendard" fontWeight="700" fill={tone.accentDeep}>5 SEC</text>
       <text x={40} y={117} fontSize="9" fontFamily="Pretendard" fill={INK_MUTE}>선행자극</text>
       <text x={150} y={117} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600">개입 윈도우</text>
@@ -2137,13 +2149,14 @@ const GazeConcentric = ({ tone, data }) => {
   // layout === 0: 기본 동심원
   return (
     <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+      {/* 바깥 원이 아래 글씨를 가로지르던 문제 → 원을 조금 작게·위로 */}
       {Array.from({length: 6}).map((_, i) => (
-        <circle key={i} cx={150} cy={65} r={12 + i*9}
+        <circle key={i} cx={150} cy={58} r={10 + i*8}
           fill="none" stroke={tone.accentDeep} strokeWidth="0.8" opacity={1 - i*0.13}/>
       ))}
-      <circle cx={150} cy={65} r="6" fill={tone.accentDeep}/>
-      <circle cx={150} cy={65} r="11" fill="none" stroke={tone.accentDeep} strokeWidth="1.2"/>
-      <text x={150} y={120} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={INK_MUTE} letterSpacing="2" fontWeight="600">
+      <circle cx={150} cy={58} r="5" fill={tone.accentDeep}/>
+      <circle cx={150} cy={58} r="9.5" fill="none" stroke={tone.accentDeep} strokeWidth="1.2"/>
+      <text x={150} y={124} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={INK_MUTE} letterSpacing="2" fontWeight="600">
         JOINT ATTENTION
       </text>
     </svg>
@@ -2482,7 +2495,7 @@ const ReinforcementSchedule = ({ tone, data }) => {
         강화 스케줄 (Reinforcement)
       </text>
       {schedules.map((sched, row) => {
-        const y = 28 + row * 24;
+        const y = 36 + row * 22; // 첫 줄 별이 제목에 닿지 않게 아래로
         return (
           <g key={row}>
             <text x={28} y={y+4} fontSize="9" fontFamily="Pretendard" fontWeight="700" fill={tone.accentDeep}>{sched.label}</text>
@@ -3540,7 +3553,9 @@ const MasteryProgress = ({ tone, data }) => {
             <rect x={100} y={y+2} width={180} height={14} rx={3} fill={tone.soft} stroke={tone.line} strokeWidth="0.5"/>
             <rect x={100} y={y+2} width={barWidth} height={14} rx={3}
               fill={isMaster ? tone.accentDeep : `url(#mpGrad${seed})`}/>
-            <text x={108 + barWidth} y={y+12} fontSize="9" fontWeight="700" fill={isMaster ? '#fff' : tone.accentDeep}>
+            {/* 마스터한 목표는 숫자를 진한 막대 안쪽에 흰색으로 (막대 밖 흰 글씨가 안 보이고 ✓와 겹치던 문제) */}
+            <text x={isMaster ? 100 + barWidth - 6 : 108 + barWidth} y={y+12} textAnchor={isMaster ? 'end' : 'start'}
+              fontSize="9" fontWeight="700" fill={isMaster ? '#fff' : tone.accentDeep}>
               {it.pct}%
             </text>
             {isMaster && (
@@ -4136,7 +4151,9 @@ const SessionTimeline = ({ tone, data }) => {
         return (
           <g key={i}>
             {i > 0 && <line x1={x} y1={42} x2={x} y2={64} stroke="#fff" strokeWidth="1"/>}
-            <text x={x + w/2} y={56} textAnchor="middle" fontSize="9" fontWeight="700" fill="#fff">{p.min}분</text>
+            {/* 막대가 왼쪽은 연하고 오른쪽은 진함 → 연한 쪽은 진한 글씨, 진한 쪽은 흰 글씨 (연한 칸 흰 글씨가 안 보이던 문제) */}
+            <text x={x + w/2} y={56} textAnchor="middle" fontSize="9" fontWeight="700"
+              fill={(x + w/2 - 28) / totalWidth < 0.62 ? tone.accentDeep : '#fff'}>{p.min}분</text>
             <text x={x + w/2} y={78} textAnchor="middle" fontSize="9" fontWeight="600" fill={tone.accentDeep}>{p.name}</text>
             <line x1={x} y1={36} x2={x} y2={42} stroke={tone.accentDeep} strokeWidth="1"/>
           </g>
@@ -4225,6 +4242,11 @@ const InterresponseTime = ({ tone, data }) => {
 
   // layout 0: 시간축 점 (원본)
   const baseY = 80;
+  // 점이 촘촘하면 이름표가 겹치므로 위아래로 번갈아 놓기
+  const xs = points.map(t => 25 + (t / 50) * 250);
+  const rLevel = []; xs.forEach((x, i) => { rLevel.push(i > 0 && x - xs[i - 1] < 14 ? (rLevel[i - 1] + 1) % 3 : 0); });
+  const mids = xs.slice(0, -1).map((x, i) => (x + xs[i + 1]) / 2);
+  const gLevel = []; mids.forEach((m, i) => { gLevel.push(i > 0 && m - mids[i - 1] < 12 ? (gLevel[i - 1] + 1) % 3 : 0); });
   return (
     <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
       <text x={150} y={12} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
@@ -4238,7 +4260,7 @@ const InterresponseTime = ({ tone, data }) => {
           <g key={i}>
             <line x1={x} y1={baseY - 8} x2={x} y2={baseY + 8} stroke={tone.accentDeep} strokeWidth="1.2"/>
             <circle cx={x} cy={baseY} r="3.5" fill={tone.accentDeep}/>
-            <text x={x} y={baseY - 14} textAnchor="middle" fontSize="7" fill={tone.accentDeep} fontWeight="700">R{i+1}</text>
+            <text x={x} y={baseY - 14 - rLevel[i] * 9} textAnchor="middle" fontSize="7" fill={tone.accentDeep} fontWeight="700">R{i+1}</text>
           </g>
         );
       })}
@@ -4248,7 +4270,7 @@ const InterresponseTime = ({ tone, data }) => {
         const gap = points[i+1] - t;
         return (
           <g key={i}>
-            <text x={(x1+x2)/2} y={baseY + 18} textAnchor="middle" fontSize="7" fill={INK_MUTE} fontStyle="italic">{gap}s</text>
+            <text x={(x1+x2)/2} y={baseY + 18 + gLevel[i] * 8} textAnchor="middle" fontSize="7" fill={INK_MUTE} fontStyle="italic">{gap}s</text>
           </g>
         );
       })}
@@ -4335,8 +4357,8 @@ const CoachingCycle = ({ tone, data }) => {
     );
   }
 
-  // layout 0: 원형 사이클 (원본)
-  const cx = 150, cy = 80, r = 30;
+  // layout 0: 원형 사이클 (원본) — 위 상자가 제목을 덮지 않게 원 전체를 아래로
+  const cx = 150, cy = 88, r = 30;
   return (
     <svg viewBox="0 0 300 160" style={{ width:'100%', height:'auto' }}>
       <defs>
@@ -4565,13 +4587,13 @@ const VocabularyGrowth = ({ tone, data }) => {
       </text>
       {/* 왼쪽: 시작 */}
       <text x={50} y={48} textAnchor="middle" fontSize="9" fill={INK_MUTE}>시작</text>
-      <text x={50} y={75} textAnchor="middle" fontSize="26" fontWeight="900" fill={tone.accent}>{start}</text>
+      <text x={50} y={75} textAnchor="middle" fontSize="26" fontWeight="900" fill={INK_SOFT}>{start}</text>
       <text x={50} y={90} textAnchor="middle" fontSize="7" fill={INK_MUTE}>{ds.months[0]}</text>
       {/* 화살표 */}
-      <line x1={80} y1={70} x2={130} y2={70} stroke={tone.accentDeep} strokeWidth="1.5"/>
-      <polygon points="125,66 135,70 125,74" fill={tone.accentDeep}/>
+      <line x1={92} y1={82} x2={200} y2={82} stroke={tone.accentDeep} strokeWidth="1.5"/>
+      <polygon points="198,78 208,82 198,86" fill={tone.accentDeep}/>
       {/* 가운데: 미니 진전 라인 */}
-      <polyline points={ds.words.map((w, i) => `${100 + i * 25},${75 - (w/maxW)*30}`).join(' ')}
+      <polyline points={ds.words.map((w, i) => `${100 + i * 25},${68 - (w/maxW)*30}`).join(' ')}
         fill="none" stroke={tone.accentDeep} strokeWidth="1.5" opacity="0.6"/>
       {/* 오른쪽: 끝 */}
       <text x={250} y={48} textAnchor="middle" fontSize="9" fill={INK_MUTE}>현재</text>
@@ -4896,7 +4918,7 @@ const FluencyPattern = ({ tone, data }) => {
   if (layout === 2) {
     // 시간 흐름 (월별 감소)
     const months = ['1월', '2월', '3월', '4월', '5월', '6월'];
-    const baseY = 100, topY = 26;
+    const baseY = 100, topY = 34; // 가장 높은 점의 숫자가 제목에 닿지 않게
     return (
       <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
         <text x={150} y={12} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
@@ -4976,7 +4998,7 @@ const StutteringTypes = ({ tone, data }) => {
         {types.map((t, i) => {
           const col = i % 3, row = Math.floor(i / 3);
           const cx = 50 + col * 100;
-          const cy = 40 + row * 50;
+          const cy = 36 + row * 46; // 아래 줄 이름이 맨 아래 설명과 겹치지 않게
           const r = 14;
           const C = 2 * Math.PI * r;
           const filled = (t.pct / 30) * C;
@@ -5018,7 +5040,7 @@ const StutteringTypes = ({ tone, data }) => {
               <rect x={x} y={32} width={w} height={26}
                 fill={isCore ? tone.accentDeep : tone.line}
                 opacity={isCore ? (0.55 + (t.pct/30) * 0.45) : 0.6}/>
-              {w > 24 && <text x={x + w/2} y={48} textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">{t.pct}</text>}
+              {w > 24 && <text x={x + w/2} y={48} textAnchor="middle" fontSize="9" fontWeight="800" fill={isCore ? '#fff' : tone.accentDeep}>{t.pct}</text>}
             </g>
           );
         })}
@@ -5106,9 +5128,10 @@ const FluencyTechnique = ({ tone, data }) => {
               <text x={28} y={y+13} fontSize="14">{t.icon}</text>
               <text x={50} y={y+12} fontSize="9" fontWeight="700" fill={tone.accentDeep}>{t.name}</text>
               <text x={130} y={y+12} fontSize="7" fill={INK_MUTE}>{t.desc.replace('\n', ' · ')}</text>
-              <rect x={216} y={y+6} width={50} height={5} rx={1} fill={tone.line}/>
-              <rect x={216} y={y+6} width={(t.effect/100)*50} height={5} rx={1} fill={tone.accentDeep}/>
-              <text x={278} y={y+12} textAnchor="end" fontSize="8" fontWeight="700" fill={tone.accentDeep}>{t.effect}%</text>
+              {/* 막대를 왼쪽으로 당겨 % 숫자와 겹치지 않게 */}
+              <rect x={204} y={y+6} width={46} height={5} rx={1} fill={tone.line}/>
+              <rect x={204} y={y+6} width={(t.effect/100)*46} height={5} rx={1} fill={tone.accentDeep}/>
+              <text x={279} y={y+12} textAnchor="end" fontSize="8" fontWeight="700" fill={tone.accentDeep}>{t.effect}%</text>
             </g>
           );
         })}
@@ -5121,33 +5144,37 @@ const FluencyTechnique = ({ tone, data }) => {
 
   if (layout === 2) {
     // 원형 배치 (4개 기법을 십자 모양으로)
+    // 위·아래 원이 제목·설명을 덮던 문제 → 세로 공간을 늘리고 원을 안쪽으로
+    const CY = 78;
     const positions = [
-      { x: 150, y: 28 }, // 위
-      { x: 240, y: 64 }, // 오
-      { x: 150, y: 100 }, // 아래
-      { x: 60, y: 64 }, // 왼
+      { x: 150, y: 38 }, // 위
+      { x: 240, y: CY }, // 오
+      { x: 150, y: 118 }, // 아래
+      { x: 60, y: CY }, // 왼
     ];
     return (
-      <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+      <svg viewBox="0 0 300 156" style={{ width:'100%', height:'auto' }}>
         <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
           유창성 4기법
         </text>
         {/* 중앙 원 */}
-        <circle cx={150} cy={64} r={16} fill={tone.accentDeep}/>
-        <text x={150} y={62} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">FLUENCY</text>
-        <text x={150} y={71} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">기법</text>
+        {techniques.map((t, i) => (
+          <line key={'l' + i} x1={150} y1={CY} x2={positions[i].x} y2={positions[i].y} stroke={tone.accentDeep} strokeWidth="0.6" opacity="0.4"/>
+        ))}
+        <circle cx={150} cy={CY} r={16} fill={tone.accentDeep}/>
+        <text x={150} y={CY - 1.5} textAnchor="middle" fontSize="5" fontWeight="800" fill="#fff">FLUENCY</text>
+        <text x={150} y={CY + 7} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">기법</text>
         {techniques.map((t, i) => {
           const p = positions[i];
           return (
             <g key={i}>
-              <line x1={150} y1={64} x2={p.x} y2={p.y} stroke={tone.accentDeep} strokeWidth="0.6" opacity="0.4"/>
-              <circle cx={p.x} cy={p.y} r={20} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
+              <circle cx={p.x} cy={p.y} r={23} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
               <text x={p.x} y={p.y+1} textAnchor="middle" fontSize="14">{t.icon}</text>
-              <text x={p.x} y={p.y+12} textAnchor="middle" fontSize="6.5" fontWeight="800" fill={tone.accentDeep}>{t.name}</text>
+              <text x={p.x} y={p.y+13} textAnchor="middle" fontSize={t.name.length > 5 ? 5.6 : 6.5} fontWeight="800" fill={tone.accentDeep}>{t.name}</text>
             </g>
           );
         })}
-        <text x={150} y={122} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
+        <text x={150} y={152} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
           Fluency Shaping · 4가지 접근
         </text>
       </svg>
@@ -5370,13 +5397,9 @@ const AACBoard = ({ tone, data }) => {
             </g>
           );
         })}
-        {/* 조합 예시 */}
-        {combo.map((c, i) => {
-          const x = 180 + i * 22;
-          return (
-            <text key={i} x={x} y={68} textAnchor="middle" fontSize="9" fontWeight="700" fill={tone.accentDeep}>{c}</text>
-          );
-        })}
+        {/* 조합 예시 — 두 줄로 ('='가 긴 문장에 가려지던 문제) */}
+        <text x={232} y={56} textAnchor="middle" fontSize="9" fontWeight="700" fill={tone.accentDeep}>{combo[0]} {combo[1]} {combo[2]}</text>
+        <text x={232} y={70} textAnchor="middle" fontSize="9" fontWeight="700" fill={tone.accentDeep}>{combo[3]} {combo[4]}</text>
         <line x1={180} y1={76} x2={282} y2={76} stroke={tone.accentDeep} strokeWidth="0.8"/>
         <text x={230} y={94} textAnchor="middle" fontSize="9" fontWeight="700" fill={tone.accentDeep}>발화 유도</text>
         <text x={150} y={122} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">상징 → 단어 → 문장</text>
@@ -5461,7 +5484,7 @@ const VBMappCluster = ({ tone, data }) => {
         {domains.map((d, i) => {
           const col = i % 3, row = Math.floor(i / 3);
           const cx = 50 + col * 100;
-          const cy = 38 + row * 44;
+          const cy = 36 + row * 50; // 윗줄 이름이 아랫줄 원에 닿지 않게
           const r = 16;
           const C = 2 * Math.PI * r;
           const pct = d.s / 15;
@@ -5481,19 +5504,19 @@ const VBMappCluster = ({ tone, data }) => {
     );
   }
 
-  // layout 0: 6각형 레이더 (기본)
-  const cx = 150, cy = 64, r = 38;
+  // layout 0: 6각형 레이더 (기본) — 위 'Mand'가 제목에, 아래 'LR'이 설명에 겹치던 문제 → 세로 공간 확장
+  const cx = 150, cy = 77, r = 36;
   const points = domains.map((d, i) => {
     const angle = -Math.PI / 2 + (Math.PI * 2 / 6) * i;
     const sr = (d.s / 15) * r;
     return {
       x: cx + sr * Math.cos(angle), y: cy + sr * Math.sin(angle),
-      lx: cx + (r + 14) * Math.cos(angle), ly: cy + (r + 14) * Math.sin(angle),
+      lx: cx + (r + 13) * Math.cos(angle), ly: cy + (r + 13) * Math.sin(angle),
       name: d.n, score: d.s,
     };
   });
   return (
-    <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+    <svg viewBox="0 0 300 152" style={{ width:'100%', height:'auto' }}>
       <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
         VB-MAPP 영역별 평가
       </text>
@@ -5514,7 +5537,7 @@ const VBMappCluster = ({ tone, data }) => {
           <text x={p.lx} y={p.ly+10} textAnchor="middle" fontSize="7" fill={INK_MUTE}>{p.score}/15</text>
         </g>
       ))}
-      <text x={150} y={124} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">언어 행동 영역별 마스터리</text>
+      <text x={150} y={148} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">언어 행동 영역별 마스터리</text>
     </svg>
   );
 };
@@ -5639,7 +5662,7 @@ const ExtinctionBurst = ({ tone, data }) => {
         </text>
         <line x1={28} y1={104} x2={278} y2={104} stroke={tone.line} strokeWidth="0.8"/>
         <line x1={92} y1={22} x2={92} y2={104} stroke={tone.accentDeep} strokeWidth="0.6" strokeDasharray="3 2" opacity="0.5"/>
-        <text x={92} y={20} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>소거 시작</text>
+        <text x={88} y={32} textAnchor="end" fontSize="7" fontWeight="700" fill={tone.accentDeep}>소거 시작</text>
         {/* 영역 */}
         <path d={`M ${pts[0].x},104 ${pts.map(p => `L ${p.x},${p.y}`).join(' ')} L ${pts[pts.length-1].x},104 Z`}
           fill={`url(#ebGrad${seed})`}/>
@@ -5680,7 +5703,7 @@ const ExtinctionBurst = ({ tone, data }) => {
                 fill={p.hot ? tone.accentDeep : tone.accent}
                 stroke={tone.accentDeep} strokeWidth="0.8"
                 opacity={p.hot ? 1 : 0.5 + i * 0.08}/>
-              <text x={x+22} y={102 - p.h + 13} textAnchor="middle" fontSize="11" fontWeight="900"
+              <text x={x+22} y={p.h < 20 ? 102 - p.h - 4 : 102 - p.h + 13} textAnchor="middle" fontSize="11" fontWeight="900"
                 fill={p.hot ? '#fff' : tone.accentDeep}>{p.val}</text>
               <text x={x+22} y={102 - p.h - 3} textAnchor="middle" fontSize="7" fontWeight="700" fill={p.hot ? tone.accentDeep : INK_MUTE}>
                 {p.hot ? '⚠️ 피크' : ''}
@@ -5704,7 +5727,7 @@ const ExtinctionBurst = ({ tone, data }) => {
       </text>
       <line x1={28} y1={104} x2={278} y2={104} stroke={tone.line} strokeWidth="0.8"/>
       <line x1={92} y1={22} x2={92} y2={104} stroke={tone.accentDeep} strokeWidth="0.6" strokeDasharray="3 2" opacity="0.5"/>
-      <text x={92} y={20} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>소거 시작</text>
+      <text x={88} y={32} textAnchor="end" fontSize="7" fontWeight="700" fill={tone.accentDeep}>소거 시작</text>
       <polyline points={pts.map(p => `${p.x},${p.y}`).join(' ')}
         fill="none" stroke={tone.accentDeep} strokeWidth="2"/>
       {pts.map((p, i) => (
@@ -5780,8 +5803,8 @@ const ProbeData = ({ tone, data }) => {
     const last = sessions[sessions.length - 1];
     const envs = [
       { name: '훈련 환경', start: first.training, end: last.training, c: tone.accentDeep },
-      { name: '가정', start: first.probe1, end: last.probe1, c: tone.accent },
-      { name: '학교', start: first.probe2, end: last.probe2, c: '#999' },
+      { name: '가정', start: first.probe1, end: last.probe1, c: tone.accentDeep },   // 연한 색이라 안 보이던 숫자 → 진하게
+      { name: '학교', start: first.probe2, end: last.probe2, c: tone.accentDeep },
     ];
     return (
       <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
@@ -5797,13 +5820,13 @@ const ProbeData = ({ tone, data }) => {
               <text x={x+35} y={42} textAnchor="middle" fontSize="8" fontWeight="700" fill={tone.accentDeep}>{e.name}</text>
               {/* 시작 */}
               <text x={x+18} y={62} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>시작</text>
-              <text x={x+18} y={78} textAnchor="middle" fontSize="14" fontWeight="800" fill={INK_SOFT}>{e.start}%</text>
-              {/* 화살표 */}
-              <line x1={x+30} y1={73} x2={x+42} y2={73} stroke={tone.accentDeep} strokeWidth="1.2"/>
-              <polygon points={`${x+39},${70} ${x+44},${73} ${x+39},${76}`} fill={tone.accentDeep}/>
+              <text x={x+17} y={77} textAnchor="middle" fontSize="10.5" fontWeight="800" fill={INK_SOFT}>{e.start}%</text>
+              {/* 화살표 — 숫자 사이 빈 곳에만 (숫자를 가로지르던 문제) */}
+              <line x1={x+31} y1={73} x2={x+36} y2={73} stroke={tone.accentDeep} strokeWidth="1.2"/>
+              <polygon points={`${x+35},${70.5} ${x+39},${73} ${x+35},${75.5}`} fill={tone.accentDeep}/>
               {/* 끝 */}
               <text x={x+54} y={62} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>최종</text>
-              <text x={x+54} y={78} textAnchor="middle" fontSize="14" fontWeight="900" fill={e.c}>{e.end}%</text>
+              <text x={x+54} y={78} textAnchor="middle" fontSize="12.5" fontWeight="900" fill={e.c}>{e.end}%</text>
               <text x={x+35} y={100} textAnchor="middle" fontSize="9" fontWeight="900" fill={tone.accentDeep}>+{diff}%P</text>
             </g>
           );
@@ -6051,7 +6074,8 @@ const ListenerSpeakerMatrix = ({ tone, data }) => {
         const sW = (s.speaker / 100) * 60;
         return (
           <g key={i}>
-            <text x={150} y={y+9} textAnchor="middle" fontSize="9" fontWeight="700" fill={INK}>{s.name}</text>
+            {/* 영역 이름을 왼쪽 끝으로 (가운데에 두면 막대에 가려졌음) */}
+            <text x={22} y={y+10} textAnchor="start" fontSize="9" fontWeight="700" fill={INK}>{s.name}</text>
             <rect x={148-lW} y={y+1} width={lW} height={12} rx={2} fill={tone.accentDeep} opacity="0.8"/>
             <text x={140-lW} y={y+10} textAnchor="end" fontSize="8" fontWeight="700" fill={tone.accentDeep}>{s.listener}%</text>
             <rect x={152} y={y+1} width={sW} height={12} rx={2} fill={tone.accent}/>
@@ -6124,7 +6148,7 @@ const NarrativeSkill = ({ tone, data }) => {
         </text>
         {stages.slice().reverse().map((s, i) => {
           const idx = stages.length - 1 - i;
-          const w = 80 + idx * 40;
+          const w = 130 + idx * 40; // 가장 좁은 칸도 번호·이름·나이가 겹치지 않게 최소 폭을 넓힘
           const y = 24 + i * 22;
           return (
             <g key={i}>
@@ -6343,19 +6367,19 @@ const AssessmentRadar = ({ tone, data }) => {
     );
   }
 
-  // layout 0: 5각형 레이더 (기본)
-  const cx = 150, cy = 64, r = 38;
+  // layout 0: 5각형 레이더 (기본) — 위 이름이 제목에, 아래 이름이 설명에 겹치던 문제 → 세로 공간 확장
+  const cx = 150, cy = 76, r = 36;
   const points = domains.map((d, i) => {
     const angle = -Math.PI / 2 + (Math.PI * 2 / 5) * i;
     const sr = (d.s / 10) * r;
     return {
       x: cx + sr * Math.cos(angle), y: cy + sr * Math.sin(angle),
-      lx: cx + (r + 16) * Math.cos(angle), ly: cy + (r + 16) * Math.sin(angle),
+      lx: cx + (r + 14) * Math.cos(angle), ly: cy + (r + 14) * Math.sin(angle),
       name: d.n, score: d.s,
     };
   });
   return (
-    <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+    <svg viewBox="0 0 300 150" style={{ width:'100%', height:'auto' }}>
       <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
         발달 영역별 평가
       </text>
@@ -6376,7 +6400,7 @@ const AssessmentRadar = ({ tone, data }) => {
           <text x={p.lx} y={p.ly+10} textAnchor="middle" fontSize="7" fill={INK_MUTE}>{p.score}/10</text>
         </g>
       ))}
-      <text x={150} y={124} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">영역별 발달 프로파일</text>
+      <text x={150} y={146} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">영역별 발달 프로파일</text>
     </svg>
   );
 };
@@ -6461,17 +6485,18 @@ const DevelopmentAge = ({ tone, data }) => {
       </text>
       {domains.map((d, i) => {
         const y = 26 + i * 22;
-        const caW = (d.ca / maxM) * 180;
-        const daW = (d.da / maxM) * 180;
+        // 막대를 짧게 해서 오른쪽 CA/DA 글자와 차이(-12m) 글자가 서로 겹치지 않게
+        const caW = (d.ca / maxM) * 150;
+        const daW = (d.da / maxM) * 150;
         const diff = d.ca - d.da;
         return (
           <g key={i}>
             <text x={20} y={y+11} fontSize="9" fontWeight="700" fill={tone.accentDeep}>{d.name}</text>
             <rect x={56} y={y+3} width={caW} height={5} rx={2} fill={tone.line}/>
             <rect x={56} y={y+10} width={daW} height={5} rx={2} fill={tone.accentDeep}/>
-            <text x={246} y={y+8} fontSize="7" fill={INK_MUTE}>CA {d.ca}m</text>
-            <text x={246} y={y+16} fontSize="7" fontWeight="700" fill={tone.accentDeep}>DA {d.da}m</text>
-            <text x={282} y={y+12} textAnchor="end" fontSize="9" fontWeight="800" fill={diff >= 12 ? '#c44' : tone.accentDeep}>-{diff}m</text>
+            <text x={212} y={y+8} fontSize="7" fill={INK_MUTE}>CA {d.ca}m</text>
+            <text x={212} y={y+16} fontSize="7" fontWeight="700" fill={tone.accentDeep}>DA {d.da}m</text>
+            <text x={285} y={y+12} textAnchor="end" fontSize="9" fontWeight="800" fill={diff >= 12 ? '#c44' : tone.accentDeep}>-{diff}m</text>
           </g>
         );
       })}
@@ -6532,10 +6557,11 @@ const PEAKLevel = ({ tone, data }) => {
               <rect x={22} y={y} width={36} height={16} rx={3} fill={tone.accentDeep}/>
               <text x={40} y={y+12} textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">L{l.lv}</text>
               <text x={64} y={y+12} fontSize="8.5" fontWeight="700" fill={tone.accentDeep}>{l.name}</text>
-              <text x={114} y={y+12} fontSize="7" fill={INK_MUTE}>{l.desc}</text>
-              <rect x={170} y={y+4} width={92} height={8} rx={2} fill={tone.line} opacity="0.4"/>
-              <rect x={170} y={y+4} width={(l.pct/100)*92} height={8} rx={2} fill={tone.accentDeep} opacity={0.5 + (l.pct/100) * 0.5}/>
-              <text x={280} y={y+12} textAnchor="end" fontSize="9" fontWeight="800" fill={tone.accentDeep}>{l.pct}%</text>
+              {/* 'Equivalence'와 설명, 막대 끝과 '100%'가 겹치던 문제 → 간격 조정 */}
+              <text x={126} y={y+12} fontSize="6.5" fill={INK_MUTE}>{l.desc}</text>
+              <rect x={176} y={y+4} width={76} height={8} rx={2} fill={tone.line} opacity="0.4"/>
+              <rect x={176} y={y+4} width={(l.pct/100)*76} height={8} rx={2} fill={tone.accentDeep} opacity={0.5 + (l.pct/100) * 0.5}/>
+              <text x={285} y={y+12} textAnchor="end" fontSize="9" fontWeight="800" fill={tone.accentDeep}>{l.pct}%</text>
             </g>
           );
         })}
@@ -6851,7 +6877,7 @@ const PlaySkillLevel = ({ tone, data }) => {
         </text>
         {levels.slice().reverse().map((l, i) => {
           const idx = levels.length - 1 - i;
-          const w = 80 + idx * 32;
+          const w = 130 + idx * 32; // 가장 좁은 칸도 번호·이름·나이가 겹치지 않게 최소 폭을 넓힘
           const y = 22 + i * 18;
           return (
             <g key={i}>
@@ -6905,10 +6931,10 @@ const EmotionRegulation = ({ tone, data }) => {
   const layout = seed % 3;
 
   if (layout === 1) {
-    // 원형 사이클 (계속 반복)
-    const cx = 150, cy = 64;
+    // 원형 사이클 (계속 반복) — 위·아래 원이 제목·설명을 덮지 않게 세로 공간을 늘림
+    const cx = 150, cy = 77;
     return (
-      <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+      <svg viewBox="0 0 300 150" style={{ width:'100%', height:'auto' }}>
         <defs>
           <marker id={`arrER1${seed}`} viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto">
             <path d="M 0 0 L 10 5 L 0 10 z" fill={tone.accentDeep}/>
@@ -6919,8 +6945,8 @@ const EmotionRegulation = ({ tone, data }) => {
         </text>
         {/* 가운데 라벨 */}
         <circle cx={cx} cy={cy} r={16} fill={tone.accentDeep}/>
-        <text x={cx} y={61} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">감정</text>
-        <text x={cx} y={71} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">조절</text>
+        <text x={cx} y={cy - 3} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">감정</text>
+        <text x={cx} y={cy + 7} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">조절</text>
         {/* 4 사분면 */}
         {steps.map((s, i) => {
           const angle = -Math.PI / 2 + (Math.PI / 2) * i;
@@ -6930,7 +6956,7 @@ const EmotionRegulation = ({ tone, data }) => {
             <g key={i}>
               <circle cx={x} cy={y} r={18} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
               <text x={x} y={y+1} textAnchor="middle" fontSize="13">{s.emoji}</text>
-              <text x={x} y={y+12} textAnchor="middle" fontSize="6.5" fontWeight="800" fill={tone.accentDeep}>{s.label}</text>
+              <text x={x} y={y+12} textAnchor="middle" fontSize={s.label.length > 4 ? 5.8 : 6.5} fontWeight="800" fill={tone.accentDeep}>{s.label}</text>
             </g>
           );
         })}
@@ -6944,7 +6970,7 @@ const EmotionRegulation = ({ tone, data }) => {
           const y2 = cy + 38 * Math.sin(a2);
           return <path key={i} d={`M ${x1} ${y1} A 38 38 0 0 1 ${x2} ${y2}`} fill="none" stroke={tone.accentDeep} strokeWidth="1" markerEnd={`url(#arrER1${seed})`} opacity="0.6"/>;
         })}
-        <text x={150} y={123} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
+        <text x={150} y={145} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
           Emotion Regulation Cycle
         </text>
       </svg>
@@ -7076,20 +7102,28 @@ const SocialCircle = ({ tone, data }) => {
         <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
           관계 네트워크
         </text>
+        {/* 위 원이 제목에 닿고 '친한 친구'가 원 밖으로 삐져나오던 문제 → 위치·크기 조정 */}
+        {[
+          { label: '가족', x: 150, y: 32 },
+          { label: '친한 친구', x: 248, y: 66 },
+          { label: '교사', x: 150, y: 100 },
+          { label: '또래', x: 52, y: 66 },
+        ].map((p, i) => (
+          <line key={'l' + i} x1={150} y1={66} x2={p.x} y2={p.y} stroke={tone.accentDeep} strokeWidth="0.8" opacity="0.4"/>
+        ))}
         {/* 중앙 (나) */}
-        <circle cx={150} cy={62} r={14} fill={tone.accentDeep}/>
-        <text x={150} y={66} textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">나</text>
+        <circle cx={150} cy={66} r={14} fill={tone.accentDeep}/>
+        <text x={150} y={70} textAnchor="middle" fontSize="9" fontWeight="800" fill="#fff">나</text>
         {/* 4방향 (가족/친구/교사/또래) */}
         {[
-          { label: '가족', x: 150, y: 28 },
-          { label: '친한 친구', x: 248, y: 62 },
+          { label: '가족', x: 150, y: 32 },
+          { label: '친한 친구', x: 248, y: 66 },
           { label: '교사', x: 150, y: 100 },
-          { label: '또래', x: 52, y: 62 },
+          { label: '또래', x: 52, y: 66 },
         ].map((p, i) => (
           <g key={i}>
-            <line x1={150} y1={62} x2={p.x} y2={p.y} stroke={tone.accentDeep} strokeWidth="0.8" opacity="0.4"/>
-            <circle cx={p.x} cy={p.y} r={16} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
-            <text x={p.x} y={p.y+3} textAnchor="middle" fontSize="8" fontWeight="700" fill={tone.accentDeep}>{p.label}</text>
+            <circle cx={p.x} cy={p.y} r={18} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
+            <text x={p.x} y={p.y+3} textAnchor="middle" fontSize={p.label.length > 3 ? 6.6 : 8} fontWeight="700" fill={tone.accentDeep}>{p.label}</text>
           </g>
         ))}
         <text x={150} y={123} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
@@ -7100,27 +7134,33 @@ const SocialCircle = ({ tone, data }) => {
   }
 
   // layout 0: 동심원 (기본)
+  // 바깥 원이 제목·설명을 덮고 이름이 원 선에 걸치던 문제 → 세로 공간을 늘리고, 이름을 두 원 사이 띠 가운데에
+  const CY0 = 76;
+  const R0 = [14, 30, 46, 62];
   return (
-    <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
-      <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
+    <svg viewBox="0 0 300 150" style={{ width:'100%', height:'auto' }}>
+      <text x={150} y={10} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
         사회적 관계 동심원
       </text>
-      {circles.slice().reverse().map((c, i) => (
-        <circle key={i} cx={150} cy={66} r={c.r}
-          fill={c.color}
-          stroke={tone.accentDeep}
-          strokeWidth={c.r === 14 ? 0 : 0.8}
-          opacity={c.r === 14 ? 1 : 0.7}/>
-      ))}
-      {circles.map((c, i) => {
-        if (i === 0) return (
-          <text key={i} x={150} y={70} textAnchor="middle" fontSize="9" fontWeight="800" fill={c.fontColor}>{c.label}</text>
-        );
+      {circles.slice().reverse().map((c, i) => {
+        const r = R0[circles.length - 1 - i];
         return (
-          <text key={i} x={150} y={66 - c.r + 9} textAnchor="middle" fontSize="8" fontWeight="700" fill={c.fontColor}>{c.label}</text>
+          <circle key={i} cx={150} cy={CY0} r={r}
+            fill={c.color}
+            stroke={tone.accentDeep}
+            strokeWidth={r === 14 ? 0 : 0.8}
+            opacity={r === 14 ? 1 : 0.7}/>
         );
       })}
-      <text x={150} y={124} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
+      {circles.map((c, i) => {
+        if (i === 0) return (
+          <text key={i} x={150} y={CY0 + 4} textAnchor="middle" fontSize="9" fontWeight="800" fill={c.fontColor}>{c.label}</text>
+        );
+        return (
+          <text key={i} x={150} y={CY0 - (R0[i] + R0[i - 1]) / 2 + 3} textAnchor="middle" fontSize="7.5" fontWeight="700" fill={c.fontColor}>{c.label}</text>
+        );
+      })}
+      <text x={150} y={146} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
         가까운 관계부터 점진적 확장
       </text>
     </svg>
@@ -7258,17 +7298,17 @@ const ExpansionTechnique = ({ tone, data }) => {
           어른의 확장
         </text>
         {examples.map((ex, i) => {
-          const y = 26 + i * 28;
+          const y = 22 + i * 28;
           return (
             <g key={i}>
-              {/* 아이 발화 (앞) */}
-              <text x={20} y={y+5} fontSize="6.5" fill={INK_MUTE} letterSpacing="1">아이</text>
+              {/* 아이 발화 (앞) — '아이'·'어른 확장' 이름표는 첫 줄 위에만 (줄마다 두면 윗줄 상자와 겹쳤음) */}
+              {i === 0 && <text x={20} y={y+5} fontSize="6.5" fill={INK_MUTE} letterSpacing="1">아이</text>}
               <rect x={20} y={y+8} width={60} height={20} rx={4} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
               <text x={50} y={y+22} textAnchor="middle" fontSize="11" fontWeight="900" fill={tone.accentDeep}>{ex.child}</text>
               {/* 화살표 */}
               <text x={94} y={y+22} fontSize="14" fontWeight="900" fill={tone.accentDeep}>→</text>
               {/* 어른 확장 — 추가 단어 색상 강조 */}
-              <text x={110} y={y+5} fontSize="6.5" fill={INK_MUTE} letterSpacing="1">어른 확장</text>
+              {i === 0 && <text x={110} y={y+5} fontSize="6.5" fill={INK_MUTE} letterSpacing="1">어른 확장</text>}
               <rect x={110} y={y+8} width={170} height={20} rx={4} fill={tone.accentDeep}/>
               <text x={195} y={y+22} textAnchor="middle" fontSize="11" fontWeight="800" fill="#fff">{ex.extra}</text>
             </g>
@@ -7302,7 +7342,7 @@ const ExpansionTechnique = ({ tone, data }) => {
               <text x={x+42} y={72} textAnchor="middle" fontSize="8" fontWeight="700" fill={tone.accentDeep}>{ex.adult}</text>
               {/* +2 */}
               <text x={x+8} y={88} fontSize="6.5" fontWeight="700" fill={INK_MUTE}>+2</text>
-              <text x={x+42} y={92} textAnchor="middle" fontSize="7.5" fontWeight="800" fill={tone.accentDeep}>{ex.extra}</text>
+              <text x={x+47} y={92} textAnchor="middle" fontSize={ex.extra.length > 7 ? 6.4 : 7.5} fontWeight="800" fill={tone.accentDeep}>{ex.extra}</text>
             </g>
           );
         })}
@@ -7338,7 +7378,7 @@ const ExpansionTechnique = ({ tone, data }) => {
             <text x={150} y={y+11} textAnchor="middle" fontSize="8" fontWeight="800" fill={tone.accentDeep}>{ex.adult}</text>
             <line x1={182} y1={y+8} x2={218} y2={y+8} stroke={tone.accentDeep} strokeWidth="1" markerEnd={`url(#arrEX${seed})`}/>
             <rect x={220} y={y} width={60} height={16} rx={8} fill={tone.accentDeep}/>
-            <text x={250} y={y+11} textAnchor="middle" fontSize="8" fontWeight="800" fill="#fff">{ex.extra}</text>
+            <text x={250} y={y+11} textAnchor="middle" fontSize={ex.extra.length > 7 ? 6.2 : 8} fontWeight="800" fill="#fff">{ex.extra}</text>{/* 긴 문장이 알약 밖으로 삐져나오던 문제 */}
           </g>
         );
       })}
@@ -7684,8 +7724,11 @@ const AACSymbolType = ({ tone, data }) => {
               <text x={x+29} y={46} textAnchor="middle" fontSize="11" fontWeight="900" fill={tone.accentDeep}>Lv{t.level}</text>
               <line x1={x+12} y1={52} x2={x+46} y2={52} stroke={tone.accentDeep} strokeWidth="0.4" opacity="0.4"/>
               <text x={x+29} y={66} textAnchor="middle" fontSize="9" fontWeight="800" fill={tone.accentDeep}>{t.name}</text>
-              <text x={x+29} y={80} textAnchor="middle" fontSize="6.5" fill={INK_SOFT}>{t.desc.replace('\n', ' ')}</text>
-              <text x={x+29} y={92} textAnchor="middle" fontSize="6" fontWeight="700" fill={tone.accentDeep}>{t.for}</text>
+              {/* 설명을 두 줄로 (한 줄로 이어 쓰면 카드 밖으로 삐져나왔음) */}
+              {t.desc.split('\n').map((ln, k) => (
+                <text key={k} x={x+29} y={77 + k * 7.5} textAnchor="middle" fontSize="6.3" fill={INK_SOFT}>{ln}</text>
+              ))}
+              <text x={x+29} y={94} textAnchor="middle" fontSize="6" fontWeight="700" fill={tone.accentDeep}>{t.for}</text>
               {i < 3 && <line x1={x+60} y1={62} x2={x+68} y2={62} stroke={tone.accentDeep} strokeWidth="1.5" markerEnd={`url(#arrAST${seed})`}/>}
             </g>
           );
@@ -7981,8 +8024,11 @@ const LanguageGames = ({ tone, data }) => {
             <g key={i}>
               <circle cx={x+20} cy={50} r={18} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8" opacity="0.6"/>
               <text x={x+20} y={54} textAnchor="middle" fontSize="16">{g.icon}</text>
-              <text x={x+20} y={80} textAnchor="middle" fontSize="7" fontWeight="800" fill={tone.accentDeep}>{g.name}</text>
-              <text x={x+20} y={92} textAnchor="middle" fontSize="6" fill={INK_MUTE}>{g.age}</text>
+              {/* 긴 이름은 두 줄로 (옆 이름과 겹치던 문제) */}
+              {(g.name.length > 4 ? _split2(g.name) : [g.name]).map((ln, k) => (
+                <text key={k} x={x+20} y={80 + k * 8.5} textAnchor="middle" fontSize="7" fontWeight="800" fill={tone.accentDeep}>{ln}</text>
+              ))}
+              <text x={x+20} y={g.name.length > 4 ? 100 : 92} textAnchor="middle" fontSize="6" fill={INK_MUTE}>{g.age}</text>
             </g>
           );
         })}
@@ -8006,10 +8052,11 @@ const LanguageGames = ({ tone, data }) => {
         return (
           <g key={i}>
             <rect x={x} y={y} width={82} height={36} rx={5} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
-            <text x={x+12} y={y+22} fontSize="16">{g.icon}</text>
-            <text x={x+34} y={y+14} fontSize="8.5" fontWeight="800" fill={tone.accentDeep}>{g.name}</text>
-            <text x={x+34} y={y+24} fontSize="6.5" fill={INK_SOFT}>{g.goal}</text>
-            <text x={x+34} y={y+32} fontSize="6" fontWeight="700" fill={tone.accentDeep}>{g.age}</text>
+            {/* 아이콘을 조금 작게·왼쪽으로, 긴 이름은 글씨를 줄여 칸 안에 (카드 밖으로 삐져나오던 문제) */}
+            <text x={x+7} y={y+22} fontSize="14">{g.icon}</text>
+            <text x={x+27} y={y+14} fontSize={g.name.length > 5 ? 7 : 8.5} fontWeight="800" fill={tone.accentDeep}>{g.name}</text>
+            <text x={x+27} y={y+24} fontSize="6.5" fill={INK_SOFT}>{g.goal}</text>
+            <text x={x+27} y={y+32} fontSize="6" fontWeight="700" fill={tone.accentDeep}>{g.age}</text>
           </g>
         );
       })}
@@ -8040,7 +8087,7 @@ const DailyRoutine = ({ tone, data }) => {
           하루 일과 언어 자극
         </text>
         {routines.map((r, i) => {
-          const y = 22 + i * 20;
+          const y = 20 + i * 19; // 마지막 줄이 아래 설명과 겹치지 않게 간격을 조금 줄임
           return (
             <g key={i}>
               <text x={22} y={y+12} fontSize="14">{r.icon}</text>
@@ -8074,7 +8121,7 @@ const DailyRoutine = ({ tone, data }) => {
               <text x={x+24} y={62} textAnchor="middle" fontSize="8" fontWeight="800" fill={tone.accentDeep}>{r.time}</text>
               <line x1={x+8} y1={68} x2={x+40} y2={68} stroke={tone.accentDeep} strokeWidth="0.3" opacity="0.4"/>
               <text x={x+24} y={80} textAnchor="middle" fontSize="6.5" fill={INK_SOFT}>{r.activity}</text>
-              <text x={x+24} y={97} textAnchor="middle" fontSize="6.5" fontWeight="700" fill={tone.accentDeep}>{r.words.split(' ')[0]}</text>
+              <text x={x+24} y={97} textAnchor="middle" fontSize="6.5" fontWeight="700" fill={tone.accentDeep}>{(r.words.match(/"[^"]*"/) || [r.words])[0]}</text>{/* "빨간 공"처럼 띄어쓰기가 있는 낱말이 잘리던 문제 */}
             </g>
           );
         })}
@@ -8098,7 +8145,7 @@ const DailyRoutine = ({ tone, data }) => {
           <g key={i}>
             <circle cx={x} cy={48} r={14} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.8"/>
             <text x={x} y={52} textAnchor="middle" fontSize="14">{r.icon}</text>
-            <text x={x} y={34} textAnchor="middle" fontSize="8" fontWeight="800" fill={tone.accentDeep}>{r.time}</text>
+            <text x={x} y={29} textAnchor="middle" fontSize="8" fontWeight="800" fill={tone.accentDeep}>{r.time}</text>
             <text x={x} y={76} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>{r.activity}</text>
             <text x={x} y={88} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>{r.words}</text>
             {i < routines.length - 1 && (
@@ -8137,14 +8184,14 @@ const ProductionCue = ({ tone, data }) => {
         </text>
         {cues.map((c, i) => {
           const y = 24 + i * 22;
-          const w = (4-i) * 50; // 점점 줄어드는 막대
+          const w = (4-i) * 20; // 점점 줄어드는 막대 (예전엔 화면 밖까지 길어져 설명 글씨를 덮었음)
           return (
             <g key={i}>
               <text x={20} y={y+11} fontSize="14">{c.icon}</text>
               <text x={42} y={y+11} fontSize="9" fontWeight="800" fill={tone.accentDeep}>{c.type}</text>
-              <rect x={100} y={y+3} width={w} height={14} rx={2} fill={tone.accentDeep} opacity={0.4 + (3-i) * 0.18}/>
-              <text x={104+w} y={y+13} fontSize="7" fontWeight="700" fill={tone.accentDeep}>{c.strength}</text>
-              <text x={282} y={y+13} textAnchor="end" fontSize="6.5" fill={INK_MUTE}>{c.desc.replace('\n', ', ')}</text>
+              <rect x={92} y={y+3} width={w} height={14} rx={2} fill={tone.accentDeep} opacity={0.4 + (3-i) * 0.18}/>
+              <text x={96+w} y={y+13} fontSize="7" fontWeight="700" fill={tone.accentDeep}>{c.strength}</text>
+              <text x={284} y={y+13} textAnchor="end" fontSize="6" fill={INK_MUTE}>{c.desc.replace('\n', ', ')}</text>
             </g>
           );
         })}
@@ -8158,7 +8205,7 @@ const ProductionCue = ({ tone, data }) => {
   if (layout === 2) {
     // 원형 표현 (시각/청각/촉각 세 갈래)
     return (
-      <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+      <svg viewBox="0 0 300 147" style={{ width:'100%', height:'auto' }}>
         <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
           3가지 감각 단서
         </text>
@@ -8179,7 +8226,7 @@ const ProductionCue = ({ tone, data }) => {
             <text x={c.x} y={c.y+13} textAnchor="middle" fontSize="7" fontWeight="800" fill={tone.accentDeep}>{c.type}</text>
           </g>
         ))}
-        <text x={150} y={125} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
+        <text x={150} y={142} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
           단서를 줄여가며 자발 발화 유도
         </text>
       </svg>
@@ -8240,14 +8287,14 @@ const SoundShaping = ({ tone, data }) => {
         </text>
         {stages.map((s, i) => {
           const y = 24 + i * 22;
-          const w = 80 + i * 50; // 점점 길어지는 막대
+          const w = 70 + i * 30; // 점점 길어지는 막대 (설명 글씨가 막대에 겹치지 않게 길이를 줄임)
           return (
             <g key={i}>
               <circle cx={20} cy={y+9} r={9} fill={tone.accentDeep} opacity={0.5 + i * 0.18}/>
               <text x={20} y={y+13} textAnchor="middle" fontSize="9" fontWeight="900" fill="#fff">{s.n}</text>
               <rect x={34} y={y+1} width={w} height={16} rx={2} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="0.6" opacity={0.5 + i * 0.15}/>
               <text x={42} y={y+13} fontSize="10" fontWeight="900" fill={tone.accentDeep}>{s.ex}</text>
-              <text x={100} y={y+13} fontSize="7.5" fill={INK_SOFT}>{s.label}</text>
+              <text x={34 + w + 6} y={y+13} fontSize="7.5" fill={INK_SOFT}>{s.label}</text>
               <text x={282} y={y+13} textAnchor="end" fontSize="7" fill={INK_MUTE}>{s.desc}</text>
             </g>
           );
@@ -8281,8 +8328,9 @@ const SoundShaping = ({ tone, data }) => {
             </g>
           );
         })}
-        <text x={50} y={108} textAnchor="middle" fontSize="7" fill={INK_MUTE}>시작</text>
-        <text x={250} y={28} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>목표</text>
+        {/* 원에 가려지던 '시작'·'목표' 표시를 원 바깥으로 */}
+        <text x={50} y={117} textAnchor="middle" fontSize="7" fill={INK_MUTE}>시작</text>
+        <text x={251} y={20} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>목표</text>
         <text x={150} y={125} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
           비슷한 소리 → 정확한 음
         </text>
@@ -8357,7 +8405,11 @@ const PhraseExpansion = ({ tone, data }) => {
               <rect x={x} y={26} width={58} height={72} rx={6} fill={isLast ? tone.accentDeep : tone.accent} stroke={tone.accentDeep} strokeWidth="0.8" opacity={isLast ? 1 : 0.4 + i * 0.18}/>
               <text x={x+29} y={44} textAnchor="middle" fontSize="11" fontWeight="900" fill={isLast ? '#fff' : tone.accentDeep}>{s.label}</text>
               <line x1={x+12} y1={50} x2={x+46} y2={50} stroke={isLast ? 'rgba(255,255,255,0.4)' : tone.accentDeep} strokeWidth="0.4" opacity="0.5"/>
-              <text x={x+29} y={66} textAnchor="middle" fontSize="8" fontWeight="800" fill={isLast ? '#fff' : tone.accentDeep}>{s.ex}</text>
+              {String(s.ex).length > 8
+                ? _split2(s.ex).map((ln, k) => (
+                    <text key={k} x={x+29} y={62 + k * 9} textAnchor="middle" fontSize="7.2" fontWeight="800" fill={isLast ? '#fff' : tone.accentDeep}>{ln}</text>
+                  ))
+                : <text x={x+29} y={66} textAnchor="middle" fontSize="8" fontWeight="800" fill={isLast ? '#fff' : tone.accentDeep}>{s.ex}</text>}
               <text x={x+29} y={82} textAnchor="middle" fontSize="6.5" fill={isLast ? 'rgba(255,255,255,0.85)' : INK_SOFT}>{s.target}</text>
               {!isLast && <line x1={x+60} y1={62} x2={x+68} y2={62} stroke={tone.accentDeep} strokeWidth="1.5" markerEnd={`url(#arrPE${seed})`}/>}
             </g>
@@ -8445,7 +8497,8 @@ const AuditoryProcessing = ({ tone, data }) => {
         </text>
         {stages.slice().reverse().map((s, i) => {
           const idx = stages.length - 1 - i;
-          const w = 80 + idx * 44;
+          // 아래(감지)가 넓고 위(통합)가 좁은 피라미드. 가장 좁은 칸도 아이콘·이름·설명이 들어가게 최소 150
+          const w = 150 + (stages.length - 1 - idx) * 30;
           const y = 22 + i * 22;
           return (
             <g key={i}>
@@ -8482,10 +8535,23 @@ const AuditoryProcessing = ({ tone, data }) => {
         <circle cx={150} cy={68} r={14} fill={tone.accentDeep}/>
         <text x={150} y={66} textAnchor="middle" fontSize="6" fontWeight="800" fill="#fff">통합</text>
         <text x={150} y={75} textAnchor="middle" fontSize="6.5" fontWeight="800" fill="#fff">{stages[3].icon}</text>
-        {/* 동심원에 라벨 */}
-        <text x={150} y={108} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>이해 {stages[2].icon}</text>
-        <text x={150} y={120} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>변별 {stages[1].icon} · 감지 {stages[0].icon}</text>
-        <text x={290} y={68} textAnchor="end" fontSize="6.5" fill={INK_MUTE}>← 바깥부터</text>
+        {/* 동심원 이름표 — 원 오른쪽 바깥에 지시선으로 (원 선 위에 겹쳐 읽기 어렵던 문제) */}
+        {[
+          { st: stages[2], r: 28, ly: 46 },
+          { st: stages[1], r: 40, ly: 66 },
+          { st: stages[0], r: 52, ly: 86 },
+        ].map((L, i) => {
+          const dy = L.ly - 68;
+          const px = 150 + Math.sqrt(Math.max(0, L.r * L.r - dy * dy));
+          return (
+            <g key={'rl' + i}>
+              <line x1={px} y1={L.ly} x2={214} y2={L.ly} stroke={tone.accentDeep} strokeWidth="0.6" opacity="0.6"/>
+              <circle cx={px} cy={L.ly} r={1.6} fill={tone.accentDeep}/>
+              <text x={218} y={L.ly + 2.5} fontSize="7.5" fontWeight="700" fill={tone.accentDeep}>{L.st.name} {L.st.icon}</text>
+            </g>
+          );
+        })}
+        <text x={218} y={106} fontSize="6.5" fill={INK_MUTE}>바깥 → 안쪽</text>
       </svg>
     );
   }
@@ -8574,7 +8640,7 @@ const ReadingLiteracy = ({ tone, data }) => {
         </text>
         {stages.slice().reverse().map((s, i) => {
           const idx = stages.length - 1 - i;
-          const w = 80 + idx * 44;
+          const w = 130 + idx * 40; // 가장 좁은 칸도 번호·이름·나이가 겹치지 않게 최소 폭을 넓힘
           const y = 22 + i * 22;
           return (
             <g key={i}>
@@ -8964,8 +9030,9 @@ const StoryBuilding = ({ tone, data }) => {
 
   if (layout === 1) {
     // 산 모양 (시작-문제 올라가고 해결-결말 내려가는 곡선)
+    // 질문 글씨가 원 밖으로 잘리던 문제 → 원 안에는 이름만, 질문·예시는 원 아래에 (세로 공간을 늘림)
     return (
-      <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+      <svg viewBox="0 0 300 146" style={{ width:'100%', height:'auto' }}>
         <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
           이야기 산
         </text>
@@ -8983,13 +9050,13 @@ const StoryBuilding = ({ tone, data }) => {
           return (
             <g key={i}>
               <circle cx={pos.x} cy={pos.y} r={18} fill={tone.accentDeep}/>
-              <text x={pos.x} y={pos.y+1} textAnchor="middle" fontSize="10" fontWeight="800" fill="#fff">{p.name}</text>
-              <text x={pos.x} y={pos.y+13} textAnchor="middle" fontSize="6.5" fontWeight="700" fill="rgba(255,255,255,0.85)">{p.q}</text>
-              <text x={pos.x} y={pos.y+30} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>{p.ex.length > 12 ? p.ex.slice(0, 12) + '..' : p.ex}</text>
+              <text x={pos.x} y={pos.y+4} textAnchor="middle" fontSize="10" fontWeight="800" fill="#fff">{p.name}</text>
+              <text x={pos.x} y={pos.y+29} textAnchor="middle" fontSize="6.5" fontWeight="700" fill={tone.accentDeep}>{p.q}</text>
+              <text x={pos.x} y={pos.y+38} textAnchor="middle" fontSize="6.2" fill={INK_MUTE}>{p.ex.length > 12 ? p.ex.slice(0, 12) + '..' : p.ex}</text>
             </g>
           );
         })}
-        <text x={150} y={124} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
+        <text x={150} y={141} textAnchor="middle" fontSize="8" fill={INK_MUTE} letterSpacing="1">
           이야기는 산처럼 올랐다 내려옴
         </text>
       </svg>
@@ -9044,7 +9111,9 @@ const StoryBuilding = ({ tone, data }) => {
             <text x={x+29} y={59} textAnchor="middle" fontSize="9" fontWeight="800" fill={tone.accentDeep}>{p.name}</text>
             <text x={x+29} y={70} textAnchor="middle" fontSize="6.5" fill={INK_SOFT}>{p.desc}</text>
             <text x={x+29} y={82} textAnchor="middle" fontSize="6.5" fontWeight="700" fill={tone.accentDeep}>{p.q}</text>
-            <text x={x+29} y={94} textAnchor="middle" fontSize="6" fill={INK_MUTE}>{p.ex}</text>
+            {(p.ex.length > 9 ? _split2(p.ex) : [p.ex]).map((ln, k, arr) => (
+              <text key={k} x={x+29} y={arr.length > 1 ? 91 + k * 7 : 94} textAnchor="middle" fontSize="6" fill={INK_MUTE}>{ln}</text>
+            ))}{/* 긴 예시 문장이 카드 밖으로 삐져나오던 문제 → 두 줄 */}
             {i < parts.length - 1 && (
               <line x1={x+60} y1={62} x2={x+68} y2={62} stroke={tone.accentDeep} strokeWidth="1.5" markerEnd={`url(#arrSB${seed})`}/>
             )}
@@ -9329,7 +9398,7 @@ const EnvironmentalArrangement = ({ tone, data }) => {
             fill={colorMap[a.color]} stroke={tone.accentDeep} strokeWidth="0.6"
             opacity={a.color === 'deep' ? 1 : a.color === 'accent' ? 0.85 : a.color === 'soft' ? 0.5 : 0.3}/>
           <text x={a.x + a.w/2} y={a.y + a.h/2 + 4} textAnchor="middle" fontSize="9" fontWeight="700"
-            fill={a.color === 'deep' || a.color === 'accent' ? '#fff' : tone.accentDeep}>{a.label}</text>
+            fill={a.color === 'deep' ? '#fff' : tone.accentDeep}>{a.label}</text>{/* 연한 칸 위 흰 글씨가 안 보이던 문제 수정 */}
         </g>
       ))}
       <text x={150} y={123} textAnchor="middle" fontSize="8" fontFamily="Pretendard" fill={INK_MUTE} letterSpacing="1">
@@ -9884,6 +9953,10 @@ const PivotalResponse = ({ tone, data }) => {
       <text x={150} y={12} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
         PRT 핵심반응 영역
       </text>
+      {/* 연결선을 먼저 그려서 가운데 원 글자 위로 선이 지나가지 않게 */}
+      {[{ x: 60, y: 36 }, { x: 240, y: 36 }, { x: 60, y: 100 }, { x: 240, y: 100 }].map((p, i) => (
+        <line key={'l' + i} x1={150} y1={68} x2={p.x} y2={p.y} stroke={areas[i].color} strokeWidth="1.5" opacity="0.5"/>
+      ))}
       <circle cx={150} cy={68} r={18} fill={tone.accentDeep}/>
       <text x={150} y={66} textAnchor="middle" fontSize="9" fontWeight="700" fill="#fff">PRT</text>
       <text x={150} y={76} textAnchor="middle" fontSize="7" fill="rgba(255,255,255,0.85)">핵심반응</text>
@@ -9895,12 +9968,12 @@ const PivotalResponse = ({ tone, data }) => {
           { x: 240, y: 100 },
         ];
         const p = positions[i];
+        const dark = area.color === tone.accentDeep; // 연한 상자에는 진한 글씨 (흰 글씨가 안 보이던 문제)
         return (
           <g key={i}>
-            <line x1={150} y1={68} x2={p.x} y2={p.y} stroke={area.color} strokeWidth="1.5" opacity="0.5"/>
-            <rect x={p.x-34} y={p.y-13} width={68} height={26} rx={5} fill={area.color}/>
-            <text x={p.x} y={p.y-1} textAnchor="middle" fontSize="9.5" fontWeight="700" fill="#fff">{area.label}</text>
-            <text x={p.x} y={p.y+9} textAnchor="middle" fontSize="7.5" fill="rgba(255,255,255,0.85)">{area.desc}</text>
+            <rect x={p.x-34} y={p.y-13} width={68} height={26} rx={5} fill={area.color} stroke={dark ? 'none' : tone.accentDeep} strokeWidth="0.6"/>
+            <text x={p.x} y={p.y-1} textAnchor="middle" fontSize="9.5" fontWeight="700" fill={dark ? '#fff' : tone.accentDeep}>{area.label}</text>
+            <text x={p.x} y={p.y+9} textAnchor="middle" fontSize="7.5" fill={dark ? 'rgba(255,255,255,0.85)' : INK_SOFT}>{area.desc}</text>
           </g>
         );
       })}
@@ -9940,7 +10013,7 @@ const ResponseLatency = ({ tone, data }) => {
         </text>
         <line x1={28} y1={104} x2={284} y2={104} stroke={tone.line} strokeWidth="0.8"/>
         <line x1={28} y1={targetY} x2={284} y2={targetY} stroke={tone.accentDeep} strokeWidth="0.6" strokeDasharray="3 3" opacity="0.5"/>
-        <text x={282} y={targetY-3} textAnchor="end" fontSize="7" fontWeight="700" fill={tone.accentDeep}>목표 {targetSec}초</text>
+        <text x={25} y={targetY-2} textAnchor="end" fontSize="5.5" fontWeight="700" fill={tone.accentDeep}>목표</text><text x={25} y={targetY+5} textAnchor="end" fontSize="5.5" fontWeight="700" fill={tone.accentDeep}>{targetSec}초</text>
         <polyline points={pts.map(p => `${p.x},${p.y}`).join(' ')} fill="none" stroke={tone.accentDeep} strokeWidth="2"/>
         {pts.map((p, i) => (
           <g key={i}>
@@ -10006,7 +10079,7 @@ const ResponseLatency = ({ tone, data }) => {
         return (
           <g>
             <line x1={28} y1={tY} x2={284} y2={tY} stroke={tone.accentDeep} strokeWidth="0.6" strokeDasharray="3 3" opacity="0.6"/>
-            <text x={282} y={tY-3} textAnchor="end" fontSize="7" fontWeight="700" fill={tone.accentDeep}>목표 {targetSec}초</text>
+            <text x={25} y={tY-2} textAnchor="end" fontSize="5.5" fontWeight="700" fill={tone.accentDeep}>목표</text><text x={25} y={tY+5} textAnchor="end" fontSize="5.5" fontWeight="700" fill={tone.accentDeep}>{targetSec}초</text>
           </g>
         );
       })()}
@@ -10156,7 +10229,7 @@ const ProfessionalGrowth = ({ tone, data }) => {
     { label: '피드백', sub: '슈퍼비전',   pos: 'bottom' },
     { label: '성찰', sub: '경험 정리',    pos: 'left'   },
   ];
-  const cx = 150, cy = 62;
+  const cx = 150, cy = 66; // 위쪽 설명 글씨가 제목에 닿지 않게
   const centerR = 13;
   const stepR = 11;
   const orbitX = 56, orbitY = 30;
@@ -10188,14 +10261,14 @@ const ProfessionalGrowth = ({ tone, data }) => {
             {positions.map((p, i) => (
               <g key={`s${i}`}>
                 <circle cx={p.x} cy={p.y} r={stepR} fill={tone.soft} stroke={tone.accentDeep} strokeWidth="0.8"/>
-                <text x={p.x} y={p.y+3} textAnchor="middle" fontSize="8" fontWeight="800" fill={tone.accentDeep}>{stages[i].label}</text>
+                <text x={p.x} y={p.y+3} textAnchor="middle" fontSize={stages[i].label.length > 2 ? 6.6 : 8} fontWeight="800" fill={tone.accentDeep}>{stages[i].label}</text>
                 <text x={p.subX} y={p.subY} textAnchor={p.anchor} fontSize="6.5" fill={INK_MUTE}>{stages[i].sub}</text>
               </g>
             ))}
           </>
         );
       })()}
-      <text x={150} y={122} textAnchor="middle" fontSize="7" fill={INK_MUTE} letterSpacing="1">
+      <text x={150} y={126} textAnchor="middle" fontSize="7" fill={INK_MUTE} letterSpacing="1">
         Continuous Professional Growth
       </text>
     </svg>
@@ -10309,7 +10382,7 @@ const DataDrivenPhilosophy = ({ tone, data }) => {
     { label: '조정', sub: '계획 수정',   pos: 'left' },
   ];
   // 4단계 원형 배치 — 원 안엔 label만, sub는 원 밖에 위치별로
-  const cx = 150, cy = 62;
+  const cx = 150, cy = 66; // 위쪽 설명 글씨가 제목에 닿지 않게
   const centerR = 13;
   const stepR = 11;
   const orbitX = 56, orbitY = 30;
@@ -10344,7 +10417,7 @@ const DataDrivenPhilosophy = ({ tone, data }) => {
             {positions.map((p, i) => (
               <g key={`s${i}`}>
                 <circle cx={p.x} cy={p.y} r={stepR} fill={tone.soft} stroke={tone.accentDeep} strokeWidth="0.8"/>
-                <text x={p.x} y={p.y+3} textAnchor="middle" fontSize="8" fontWeight="800" fill={tone.accentDeep}>{steps[i].label}</text>
+                <text x={p.x} y={p.y+3} textAnchor="middle" fontSize={steps[i].label.length > 2 ? 6.6 : 8} fontWeight="800" fill={tone.accentDeep}>{steps[i].label}</text>
                 {/* sub는 원 밖 위치별로 */}
                 <text x={p.subX} y={p.subY} textAnchor={p.anchor} fontSize="6.5" fill={INK_MUTE}>{steps[i].sub}</text>
               </g>
@@ -10352,7 +10425,7 @@ const DataDrivenPhilosophy = ({ tone, data }) => {
           </>
         );
       })()}
-      <text x={150} y={122} textAnchor="middle" fontSize="7" fill={INK_MUTE} letterSpacing="1">
+      <text x={150} y={126} textAnchor="middle" fontSize="7" fill={INK_MUTE} letterSpacing="1">
         Data-Driven Clinical Decisions
       </text>
     </svg>
@@ -10378,7 +10451,7 @@ const DualBrainApproach = ({ tone, data }) => {
         <path d="M -20 -10 Q -18 0 -22 10" stroke={tone.accentDeep} strokeWidth="0.7" fill="none" opacity="0.6"/>
         <path d="M -12 -14 Q -14 -4 -10 8" stroke={tone.accentDeep} strokeWidth="0.7" fill="none" opacity="0.6"/>
         <text x={-14} y={-30} textAnchor="middle" fontSize="8" fontWeight="900" fill={tone.accentDeep}>행동 분석</text>
-        <text x={-14} y={42} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>BCBA 영역</text>
+        <text x={-14} y={37} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>BCBA 영역</text>
       </g>
       {/* 우측 뇌 (언어재활) */}
       <g transform="translate(195 65)">
@@ -10387,15 +10460,16 @@ const DualBrainApproach = ({ tone, data }) => {
         <path d="M 20 -10 Q 18 0 22 10" stroke={tone.accentDeep} strokeWidth="0.7" fill="none" opacity="0.6"/>
         <path d="M 12 -14 Q 14 -4 10 8" stroke={tone.accentDeep} strokeWidth="0.7" fill="none" opacity="0.6"/>
         <text x={14} y={-30} textAnchor="middle" fontSize="8" fontWeight="900" fill={tone.accentDeep}>언어 재활</text>
-        <text x={14} y={42} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>1급 영역</text>
+        <text x={14} y={37} textAnchor="middle" fontSize="6.5" fill={INK_MUTE}>1급 영역</text>
       </g>
       {/* 가운데 연결 + 통합 라벨 */}
       <line x1={130} y1={65} x2={170} y2={65} stroke={tone.accentDeep} strokeWidth="1.5"/>
       <rect x={134} y={56} width={32} height={18} rx={9} fill={tone.accentDeep}/>
       <text x={150} y={68} textAnchor="middle" fontSize="7" fontWeight="900" fill="#fff">통합</text>
       {/* 하단 캡션 */}
-      <text x={150} y={113} textAnchor="middle" fontSize="7.5" fill={tone.accentDeep} fontWeight="700">두 영역을 한 임상가가 동시에 봅니다</text>
-      <text x={150} y={124} textAnchor="middle" fontSize="6.5" fill={INK_MUTE} letterSpacing="1">
+      {/* 위 'BCBA 영역'·'1급 영역'과 겹치던 문제 → 조금씩 띄움 */}
+      <text x={150} y={116} textAnchor="middle" fontSize="7.5" fill={tone.accentDeep} fontWeight="700">두 영역을 한 임상가가 동시에 봅니다</text>
+      <text x={150} y={126} textAnchor="middle" fontSize="6.5" fill={INK_MUTE} letterSpacing="1">
         Integrated Clinical Mind
       </text>
     </svg>
@@ -10527,10 +10601,10 @@ const ChildToFamily = ({ tone, data }) => {
       <text x={150} y={28} textAnchor="middle" fontSize="7" fontWeight="700" fill={INK_MUTE}>일상·환경</text>
       {/* 가족 */}
       <circle cx={150} cy={66} r={36} fill={tone.soft} opacity="0.4" stroke={tone.accentDeep} strokeWidth="0.6"/>
-      <text x={186} y={70} fontSize="7" fontWeight="700" fill={tone.accentDeep}>가족</text>
+      <text x={150} y={39.5} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>가족</text>{/* 원 선 위에 걸치던 이름을 두 원 사이 띠 안으로 */}
       {/* 부모 */}
       <circle cx={150} cy={66} r={24} fill={tone.accent} opacity="0.5" stroke={tone.accentDeep} strokeWidth="0.7"/>
-      <text x={172} y={70} fontSize="7" fontWeight="700" fill={tone.accentDeep}>부모</text>
+      <text x={150} y={51.5} textAnchor="middle" fontSize="7" fontWeight="700" fill={tone.accentDeep}>부모</text>
       {/* 아이 (중심) */}
       <circle cx={150} cy={66} r={12} fill={tone.accentDeep}/>
       <text x={150} y={64} textAnchor="middle" fontSize="6.5" fontWeight="900" fill="#fff">아이</text>
@@ -10908,7 +10982,7 @@ const TherapistSessionScene = ({ tone, data }) => {
       <rect x={30} y={28} width={28} height={20} fill="#fff" stroke={tone.accentDeep} strokeWidth="0.6"/>
       <polyline points="32,46 36,42 40,40 44,36 48,34 52,30 56,30" fill="none" stroke={tone.accentDeep} strokeWidth="1"/>
       <circle cx={56} cy={30} r={1.5} fill={tone.accentDeep}/>
-      <text x={44} y={56} textAnchor="middle" fontSize="4.5" fill={INK_MUTE}>진전 차트</text>
+      <text x={61} y={33} textAnchor="start" fontSize="4.5" fill={INK_MUTE}>진전 차트</text>{/* 치료사 머리에 가려지던 이름표를 차트 오른쪽 위로 */}
       {/* 벽에 시계 */}
       <circle cx={250} cy={38} r={9} fill="#fff" stroke={tone.accentDeep} strokeWidth="0.8"/>
       <line x1={250} y1={38} x2={250} y2={32} stroke={tone.accentDeep} strokeWidth="0.8"/>
@@ -11017,7 +11091,7 @@ const TherapistSessionScene = ({ tone, data }) => {
 // 8) 집안 일상 (식탁/거실) — 일반화 장면
 const HomeRoutineScene = ({ tone, data }) => {
   return (
-    <svg viewBox="0 0 300 130" style={{ width:'100%', height:'auto' }}>
+    <svg viewBox="0 0 300 137" style={{ width:'100%', height:'auto' }}>
       <text x={150} y={11} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
         치료실 너머, 일상에서
       </text>
@@ -11115,8 +11189,8 @@ const HomeRoutineScene = ({ tone, data }) => {
       <ellipse cx={150} cy={48} rx={32} ry={11} fill="#fff" stroke={tone.accentDeep} strokeWidth="1"/>
       <text x={150} y={51} textAnchor="middle" fontSize="8" fontWeight="800" fill={tone.accentDeep}>"엄마, 물 줘"</text>
       <path d="M 175 56 L 188 65 L 178 58 Z" fill="#fff" stroke={tone.accentDeep} strokeWidth="0.8"/>
-      <text x={150} y={123} textAnchor="middle" fontSize="6" fill={INK_MUTE} letterSpacing="1">
-        Generalization at Home
+      <text x={150} y={133} textAnchor="middle" fontSize="6" fill={INK_MUTE} letterSpacing="1">
+        Generalization at Home{/* '엄마'·'아이' 이름표와 한 줄에 붙어 보이던 문제 → 아래 줄로 */}
       </text>
     </svg>
   );
@@ -11339,8 +11413,8 @@ const DrawingChildScene = ({ tone, data }) => {
         {/* 팔 (오른쪽으로) */}
         <rect x={11} y={-5} width={20} height={12} fill={tone.soft} stroke={tone.accentDeep} strokeWidth="0.8"/>
       </g>
-      <text x={150} y={123} textAnchor="middle" fontSize="6.5" fill={INK_MUTE} letterSpacing="1">
-        Self-Expression
+      <text x={150} y={128} textAnchor="middle" fontSize="6.5" fill={INK_MUTE} letterSpacing="1">
+        Self-Expression{/* 기울어진 도화지 테두리와 겹치던 문제 → 조금 아래로 */}
       </text>
     </svg>
   );
@@ -11727,6 +11801,125 @@ const getDiagramLabel = (name) => {
 
 // 라우터: 카테고리 × 슬라이드 kind → 적절한 아트워크
 // data?.topic 또는 data?.head 를 시드로 사용해서 같은 주제는 일관된 도식, 다른 주제는 다른 도식
+// ────────────────────────────────────────────────
+// 도식 작은 글씨 키우기 — 휴대폰에서 읽히도록
+// ────────────────────────────────────────────────
+// 도식(SVG)의 작은 글자를 키운 뒤, 실제 화면에서 글자 자리를 재 봄.
+//  · 다른 글자와 새로 겹치거나 도식 밖으로 나가면 → 그 글자만 절반만 키우고, 그래도 안 되면 원래 크기로
+//  · 원래부터 겹쳐 있던 것은 탓하지 않음 (원래 모습 기준)
+// 켜고 끄기: 움직임·다양성 칸의 [도식 글씨 크게] (기본 켜짐)
+function reelsDiagramBoostOn() {
+  if (typeof window === 'undefined') return true;
+  if (window.__reelsDiagramBoost == null) {
+    try { window.__reelsDiagramBoost = localStorage.getItem('reels_diagram_boost') !== '0'; } catch (e) { window.__reelsDiagramBoost = true; }
+  }
+  return !!window.__reelsDiagramBoost;
+}
+const BOOST_MIN = 10;     // 이 크기(도식 단위)보다 작은 글자를 키움
+const BOOST_RATE = 1.35;  // 최대 1.35배까지
+function boostSvgText(root, on) {
+  if (!root) return;
+  // 우리가 바꾼 크기는 data-fsa에 적어 둠 → 앱이 도식을 다시 그리며 크기를 바꿨으면 그 값을 새 '원래 크기'로
+  const setFs = (t, v) => { const sv = String(v); t.setAttribute('font-size', sv); t.setAttribute('data-fsa', sv); };
+  root.querySelectorAll('svg').forEach(svg => {
+    const items = Array.from(svg.querySelectorAll('text')).filter(t => {
+      const cur = t.getAttribute('font-size');
+      if (t.hasAttribute('data-fsa') && cur !== t.getAttribute('data-fsa') && cur != null && Number.isFinite(parseFloat(cur))) {
+        t.setAttribute('data-fs0', cur);
+        t.removeAttribute('data-fsa');
+      }
+      if (!t.hasAttribute('data-fs0')) {
+        const fs = t.getAttribute('font-size');
+        if (fs == null || !Number.isFinite(parseFloat(fs))) return false;
+        t.setAttribute('data-fs0', fs);
+      }
+      return true;
+    });
+    if (!items.length) return;
+    if (!on) {
+      items.forEach(t => setFs(t, t.getAttribute('data-fs0')));
+      svg.__boostSig = null;
+      return;
+    }
+    const sig = items.map(t => t.getAttribute('data-fs0') + '·' + t.textContent).join('|');
+    if (svg.__boostSig === sig) return; // 이미 맞춰 둔 도식은 다시 재지 않음
+    const svgRect = svg.getBoundingClientRect();
+    if (!svgRect.width || !svgRect.height) return; // 아직 화면에 안 그려짐 → 다음에
+    // 등장 효과로 잠깐 커지거나 작아진 상태에서 재도 결과가 같도록, 기준 거리를 그 배율에 맞춤
+    const zk = (svg.clientWidth > 0 ? svgRect.width / svg.clientWidth : 1) || 1;
+    const orig = items.map(t => parseFloat(t.getAttribute('data-fs0')));
+    const want = orig.map(f => (f < BOOST_MIN ? Math.min(BOOST_MIN, f * BOOST_RATE) : f));
+    const steps = orig.map((f, i) => [want[i], f + (want[i] - f) / 2, f]);
+    const level = items.map(() => 0);
+    const apply = () => items.forEach((t, i) => setFs(t, Math.round(steps[i][level[i]] * 100) / 100));
+    const rects = () => items.map(t => { const r = t.getBoundingClientRect(); return r.width ? r : null; });
+    const tol = 0.6 * zk;
+    const PAD = 1.5 * zk; // 글자끼리 최소 틈
+    // 두 글자 상자가 겹치는 넓이 (틈 PAD만큼 넓혀서 잼)
+    const ovArea = (a, b) => {
+      if (!a || !b) return 0;
+      const w = Math.min(a.right + PAD, b.right + PAD) - Math.max(a.left - PAD, b.left - PAD);
+      const h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      return w > tol && h > tol ? w * h : 0;
+    };
+    const overlap = (a, b) => ovArea(a, b) > 0;
+    const outside = (a) => a && (a.left < svgRect.left - tol || a.top < svgRect.top - tol || a.right > svgRect.right + tol || a.bottom > svgRect.bottom + tol);
+    // 원래 크기에서의 자리 (기준)
+    items.forEach((t, i) => setFs(t, orig[i]));
+    const r0 = rects();
+    // 도형(상자·원·선) 자리 — 글자가 상자 밖으로 삐져나오거나, 원래 안 닿던 도형에 닿으면 안 됨
+    const shapes = Array.from(svg.querySelectorAll('rect, circle, ellipse, line, polygon')).map(el => el.getBoundingClientRect()).filter(r => r.width > 0 || r.height > 0);
+    const inside = (box, a) => box && a && a.left >= box.left - tol && a.right <= box.right + tol && a.top >= box.top - tol && a.bottom <= box.bottom + tol;
+    const touch = (a, b) => a && b && a.left < b.right - tol && b.left < a.right - tol && a.top < b.bottom - tol && b.top < a.bottom - tol;
+    const area = (r) => r.width * r.height;
+    // 글자마다: 원래 들어 있던 가장 작은 상자 / 원래 안 닿던 도형 목록
+    // 상자 안 여백 (가장 좁은 쪽)
+    const marginIn = (box, a) => Math.min(a.left - box.left, box.right - a.right, a.top - box.top, box.bottom - a.bottom);
+    const home = r0.map(a => {
+      if (!a) return null;
+      let best = null;
+      shapes.forEach(sh => { if (inside(sh, a) && area(sh) < area(svgRect) * 0.9 && (!best || area(sh) < area(best))) best = sh; });
+      return best;
+    });
+    const clear = r0.map(a => (a ? shapes.filter(sh => !touch(sh, a) && !inside(sh, a)) : []));
+    for (let round = 0; round < 3; round++) {
+      apply();
+      const r = rects();
+      const bad = new Set();
+      for (let i = 0; i < items.length; i++) {
+        if (level[i] < 2 && outside(r[i]) && !outside(r0[i])) bad.add(i);
+        // 상자 밖으로 삐져나오거나 테두리에 너무 붙음 (원래 여백과 4px 중 작은 값은 지켜야 함)
+        if (level[i] < 2 && home[i] && r[i] && marginIn(home[i], r[i]) < Math.min(marginIn(home[i], r0[i]), 4 * zk) - 0.5 * zk) bad.add(i);
+        if (level[i] < 2 && clear[i].some(sh => touch(sh, r[i]))) bad.add(i);          // 원래 안 닿던 도형에 닿음
+        for (let j = i + 1; j < items.length; j++) {
+          // 새로 겹치거나, 원래 살짝 겹쳐 있던 것이 더 많이 겹치면 안 됨
+          const before = ovArea(r0[i], r0[j]), after = ovArea(r[i], r[j]);
+          if (after > 0 && after > before * 1.1 + zk * zk) {
+            if (level[i] < 2 && want[i] !== orig[i]) bad.add(i);
+            if (level[j] < 2 && want[j] !== orig[j]) bad.add(j);
+          }
+        }
+      }
+      if (!bad.size) break;
+      bad.forEach(i => { level[i] = Math.min(2, level[i] + 1); });
+      if (round === 2) apply();
+    }
+    // 원래 같은 크기였던 글자들은 같은 크기로 맞춤 (한 줄에 있는 카드 세 개 중 하나만 작아 보이지 않게)
+    const groupMax = {};
+    items.forEach((_, i) => { const k = String(orig[i]); groupMax[k] = Math.max(groupMax[k] || 0, level[i]); });
+    items.forEach((_, i) => { level[i] = groupMax[String(orig[i])]; });
+    apply();
+    svg.__boostSig = sig;
+  });
+}
+function DiagramTextBoost({ children }) {
+  const ref = useRef(null);
+  React.useLayoutEffect(() => {
+    try { boostSvgText(ref.current, reelsDiagramBoostOn()); } catch (e) { /* 실패해도 원래 도식 그대로 */ }
+  });
+  return <div ref={ref} style={{ width: '100%' }}>{children}</div>;
+}
+
 const ToneArt = ({ tone, kind, data }) => {
   if (!tone) tone = TONE_TOKENS.general;
 
@@ -13381,6 +13574,1913 @@ function VariantThumbnail({ variant, active, accent }) {
 // ────────────────────────────────────────────────
 // 8) 메인 컴포넌트
 // ────────────────────────────────────────────────
+// ============================================================================
+// 🎨 디자이너 모드 — 화면 그리기 엔진
+// ----------------------------------------------------------------------------
+// AI가 "설계도(JSON)"를 쓰면, 이 엔진이 그 설계도를 시간에 따라 캔버스에 직접 그린다.
+//  · 화면 캡처 도구(html2canvas)를 쓰지 않고 직접 그려서 → 빠르고 또렷하고 미리보기 = 결과물
+//  · "몇 초에 어떤 모습인지"를 계산으로 정하기 때문에 → 영상이 끊기지 않음
+//  · AI가 쓴 코드를 실행하지 않고 정해진 부품만 그림 → 안전하고 깨질 일이 적음
+// 캔버스 기준 크기: 가로 1080 × 세로 1920 (인스타 릴스 규격)
+// ============================================================================
+
+const DS_W = 1080;
+const DS_H = 1920;
+const DS_TRANS = 0.5; // 장면 전환 시간(초)
+
+// 쓸 수 있는 글꼴 (모두 한글 지원 무료 글꼴)
+const DS_FONTS = {
+  'Pretendard':       { weights: [400, 600, 700, 800, 900], kind: '고딕' },
+  'Noto Sans KR':     { weights: [400, 500, 700, 900], kind: '고딕' },
+  'Gothic A1':        { weights: [400, 700, 900], kind: '고딕' },
+  'Nanum Gothic':     { weights: [400, 700, 800], kind: '고딕' },
+  'IBM Plex Sans KR': { weights: [400, 600, 700], kind: '고딕' },
+  'Noto Serif KR':    { weights: [400, 700, 900], kind: '명조' },
+  'Nanum Myeongjo':   { weights: [400, 700, 800], kind: '명조' },
+  'Gowun Batang':     { weights: [400, 700], kind: '명조' },
+  'Hahmlet':          { weights: [400, 600, 800], kind: '명조' },
+  'Song Myung':       { weights: [400], kind: '명조' },
+  'Black Han Sans':   { weights: [400], kind: '제목용 굵은' },
+  'Do Hyeon':         { weights: [400], kind: '제목용' },
+  'Jua':              { weights: [400], kind: '둥근 제목' },
+  'Gowun Dodum':      { weights: [400], kind: '둥근 본문' },
+  'Sunflower':        { weights: [300, 500, 700], kind: '고딕' },
+  'Dongle':           { weights: [400, 700], kind: '귀여운' },
+  'Nanum Pen Script': { weights: [400], kind: '손글씨' },
+  'Gaegu':            { weights: [400, 700], kind: '손글씨' },
+  'Gamja Flower':     { weights: [400], kind: '손글씨' },
+};
+const DS_FONT_NAMES = Object.keys(DS_FONTS);
+const DS_EMOJI_FONT = '"Apple Color Emoji","Segoe UI Emoji","Noto Color Emoji",sans-serif';
+
+let dsFontCssReady = null; // 글꼴 목록(CSS)이 도착할 때까지 기다리는 약속
+function dsLoadFontCss() {
+  if (dsFontCssReady) return dsFontCssReady;
+  const waits = [];
+  const waitLink = (l) => new Promise(res => { l.onload = res; l.onerror = res; setTimeout(res, 6000); });
+  try {
+    if (!document.getElementById('ds-font-google')) {
+      const fam = [
+        'Noto+Sans+KR:wght@400;500;700;900', 'Gothic+A1:wght@400;700;900', 'Nanum+Gothic:wght@400;700;800',
+        'IBM+Plex+Sans+KR:wght@400;600;700', 'Noto+Serif+KR:wght@400;700;900', 'Nanum+Myeongjo:wght@400;700;800',
+        'Gowun+Batang:wght@400;700', 'Hahmlet:wght@400;600;800', 'Song+Myung', 'Black+Han+Sans', 'Do+Hyeon',
+        'Jua', 'Gowun+Dodum', 'Sunflower:wght@300;500;700', 'Dongle:wght@400;700', 'Nanum+Pen+Script',
+        'Gaegu:wght@400;700', 'Gamja+Flower',
+      ];
+      const l = document.createElement('link');
+      l.id = 'ds-font-google'; l.rel = 'stylesheet'; l.crossOrigin = 'anonymous';
+      l.href = 'https://fonts.googleapis.com/css2?' + fam.map(f => 'family=' + f).join('&') + '&display=swap';
+      waits.push(waitLink(l));
+      document.head.appendChild(l);
+    }
+    if (!document.getElementById('reels-font-pretendard')) {
+      const l = document.createElement('link');
+      l.id = 'reels-font-pretendard'; l.rel = 'stylesheet'; l.crossOrigin = 'anonymous';
+      l.href = 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css';
+      waits.push(waitLink(l));
+      document.head.appendChild(l);
+    }
+  } catch (e) { /* 글꼴을 못 불러와도 기본 글꼴로 그려짐 */ }
+  dsFontCssReady = Promise.all(waits);
+  return dsFontCssReady;
+}
+
+// ── 색 ──────────────────────────────────────────────────────────────
+const DS_HEX = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
+const DS_RGBA = /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+\s*)?\)$/i;
+function dsColor(c, spec, fallback) {
+  if (c == null || c === '') return fallback;
+  if (typeof c !== 'string') return fallback;
+  const pal = (spec && spec.style && spec.style.palette) || {};
+  if (pal[c]) return dsColor(pal[c], null, fallback);
+  if (c === 'white') return '#ffffff';
+  if (c === 'black') return '#000000';
+  if (c === 'transparent') return 'rgba(0,0,0,0)';
+  if (DS_HEX.test(c) || DS_RGBA.test(c)) return c;
+  return fallback;
+}
+function dsFill(ctx, c, spec, x, y, w, h, fallback) {
+  // 색 하나 또는 [색1, 색2(, 각도)] 그라데이션
+  if (Array.isArray(c) && c.length >= 2) {
+    const ang = ((typeof c[2] === 'number' ? c[2] : 180) - 90) * Math.PI / 180;
+    const cx = x + w / 2, cy = y + h / 2;
+    const r = Math.abs(w * Math.cos(ang)) / 2 + Math.abs(h * Math.sin(ang)) / 2;
+    const g = ctx.createLinearGradient(cx - Math.cos(ang) * r, cy - Math.sin(ang) * r, cx + Math.cos(ang) * r, cy + Math.sin(ang) * r);
+    g.addColorStop(0, dsColor(c[0], spec, '#ffffff'));
+    g.addColorStop(1, dsColor(c[1], spec, '#ffffff'));
+    return g;
+  }
+  return dsColor(c, spec, fallback);
+}
+
+// ── 글꼴 ────────────────────────────────────────────────────────────
+function dsFamily(f, spec) {
+  const fonts = (spec && spec.style && spec.style.fonts) || {};
+  let fam = f;
+  if (f === 'head' || f === 'body' || f === 'hand' || f === 'accent') fam = fonts[f];
+  if (!fam) fam = fonts.body || 'Noto Sans KR';
+  if (!DS_FONTS[fam]) fam = 'Noto Sans KR';
+  return fam;
+}
+function dsWeight(fam, w) {
+  const ws = (DS_FONTS[fam] && DS_FONTS[fam].weights) || [400];
+  const want = Number(w) || 400;
+  let best = ws[0];
+  for (const x of ws) if (Math.abs(x - want) < Math.abs(best - want)) best = x;
+  return best;
+}
+function dsFontStr(fam, weight, size) {
+  return `${weight} ${Math.max(1, Math.round(size))}px "${fam}", "Noto Sans KR", "Apple SD Gothic Neo", sans-serif`;
+}
+
+// 설계도에 쓰인 글자를 실제로 쓸 글꼴로 미리 불러오기 (한글은 글자별로 나눠 받기 때문에 글자를 같이 넘김)
+async function dsEnsureFonts(spec) {
+  if (!document.fonts || !document.fonts.load) return;
+  // 글꼴 목록(CSS)이 먼저 도착해야 글꼴을 불러올 수 있음
+  try { await dsLoadFontCss(); } catch (e) {}
+  const need = new Map();
+  const add = (fam, w, txt) => {
+    const key = fam + '|' + w;
+    need.set(key, (need.get(key) || '') + (txt || ''));
+  };
+  (spec.scenes || []).forEach(sc => (sc.els || []).forEach(el => {
+    if (el.type === 'text' || el.type === 'pill') {
+      const fam = dsFamily(el.font || 'body', spec);
+      add(fam, dsWeight(fam, el.weight || (el.type === 'pill' ? 700 : 400)), String(el.text || '').replace(/\*\*/g, ''));
+    }
+  }));
+  const jobs = [];
+  need.forEach((txt, key) => {
+    const [fam, w] = key.split('|');
+    const sample = Array.from(new Set(Array.from(txt + '가나다ABC123'))).join('').slice(0, 1500);
+    jobs.push(document.fonts.load(`${w} 40px "${fam}"`, sample).catch(() => {}));
+  });
+  await Promise.race([Promise.all(jobs), new Promise(r => setTimeout(r, 9000))]);
+  dsTextCache.clear(); // 진짜 글꼴로 다시 재기
+}
+
+// ── 이징 ────────────────────────────────────────────────────────────
+const dsClamp = (v, a = 0, b = 1) => Math.max(a, Math.min(b, v));
+const dsOutCubic = (x) => 1 - Math.pow(1 - x, 3);
+const dsInOutCubic = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+const dsOutBack = (x) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(x - 1, 3) + c1 * Math.pow(x - 1, 2); };
+const dsOutElastic = (x) => (x === 0 ? 0 : x === 1 ? 1 : Math.pow(2, -10 * x) * Math.sin((x * 10 - 0.75) * (2 * Math.PI) / 3) + 1);
+
+// 요소 하나의 "지금 이 순간" 상태
+function dsAnimState(el, t) {
+  const st = { a: 1, dx: 0, dy: 0, s: 1, r: 0, reveal: 1, revealDir: 'x', draw: 1, chars: 1, count: 1 };
+  const an = el.anim || {};
+  const type = an.in || 'fade';
+  const at = Number(an.at) || 0;
+  const dur = Math.max(0.05, Number(an.dur) || 0.7);
+  const dist = Number(an.dist) || 70;
+  const raw = type === 'none' ? 1 : dsClamp((t - at) / dur);
+  const e = dsOutCubic(raw);
+  switch (type) {
+    case 'none': break;
+    case 'fade': st.a = e; break;
+    case 'up': st.a = raw > 0 ? Math.min(1, raw * 2.2) : 0; st.dy = dist * (1 - e); break;
+    case 'down': st.a = raw > 0 ? Math.min(1, raw * 2.2) : 0; st.dy = -dist * (1 - e); break;
+    case 'left': st.a = raw > 0 ? Math.min(1, raw * 2.2) : 0; st.dx = dist * 1.4 * (1 - e); break;   // 오른쪽에서 왼쪽으로 들어옴
+    case 'right': st.a = raw > 0 ? Math.min(1, raw * 2.2) : 0; st.dx = -dist * 1.4 * (1 - e); break; // 왼쪽에서 오른쪽으로 들어옴
+    case 'pop': { const b = dsOutBack(raw); st.a = Math.min(1, raw * 3); st.s = 0.4 + 0.6 * b; break; }
+    case 'zoom': st.a = e; st.s = 1.35 - 0.35 * e; break;
+    case 'drop': { const b = dsOutBack(raw); st.a = Math.min(1, raw * 3); st.dy = -dist * 1.6 * (1 - b); break; }
+    case 'swing': { const b = dsOutBack(raw); st.a = Math.min(1, raw * 2.5); st.r = -14 * (1 - b); st.dx = -dist * 0.5 * (1 - b); break; }
+    case 'spin': { st.a = Math.min(1, raw * 2.5); st.r = -180 * (1 - e); st.s = 0.3 + 0.7 * dsOutBack(raw); break; }
+    case 'elastic': { const b = dsOutElastic(raw); st.a = Math.min(1, raw * 3); st.s = 0.2 + 0.8 * b; break; }
+    case 'wipe': st.reveal = dsInOutCubic(raw); st.revealDir = 'x'; break;
+    case 'wipeUp': st.reveal = dsInOutCubic(raw); st.revealDir = 'y'; break;
+    case 'draw': st.draw = dsInOutCubic(raw); st.reveal = st.draw; break;
+    case 'type': st.chars = raw; break;
+    case 'count': st.a = Math.min(1, raw * 4); st.count = dsOutCubic(raw); break;
+    case 'blur': st.a = e; st.s = 1.08 - 0.08 * e; break;
+    default: st.a = e;
+  }
+  // 퇴장 (선택)
+  const out = el.out;
+  if (out && out.at != null) {
+    const od = Math.max(0.05, Number(out.dur) || 0.4);
+    const p = dsInOutCubic(dsClamp((t - Number(out.at)) / od));
+    if (p > 0) {
+      const ot = out.type || 'fade';
+      st.a *= 1 - p;
+      if (ot === 'up') st.dy -= 60 * p;
+      else if (ot === 'down') st.dy += 60 * p;
+      else if (ot === 'left') st.dx -= 120 * p;
+      else if (ot === 'right') st.dx += 120 * p;
+      else if (ot === 'zoom') st.s *= 1 + 0.3 * p;
+      else if (ot === 'shrink') st.s *= 1 - 0.6 * p;
+    }
+  }
+  // 계속 움직이기 (등장이 끝난 뒤 은은하게)
+  const loop = el.loop;
+  if (loop && loop !== 'none') {
+    const k = dsClamp((t - at - dur) / 0.6);
+    const ph = (Number(el.loopPhase) || 0);
+    if (loop === 'float') st.dy += Math.sin((t + ph) * 2.1) * 10 * k;
+    else if (loop === 'bob') st.dy += Math.abs(Math.sin((t + ph) * 3.2)) * -14 * k;
+    else if (loop === 'pulse') st.s *= 1 + Math.sin((t + ph) * 4) * 0.035 * k;
+    else if (loop === 'wiggle') st.r += Math.sin((t + ph) * 5) * 2.5 * k;
+    else if (loop === 'spin') st.r += (t - at - dur) * 40 * k;
+    else if (loop === 'drift') { st.dx += Math.sin((t + ph) * 0.9) * 18 * k; st.dy += Math.cos((t + ph) * 0.7) * 14 * k; }
+  }
+  return st;
+}
+
+// ── 둥근 사각형 경로 (오래된 사파리 대비 직접 구현) ─────────────────────
+function dsRoundRect(ctx, x, y, w, h, r) {
+  const rr = Math.max(0, Math.min(Number(r) || 0, Math.abs(w) / 2, Math.abs(h) / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.lineTo(x + w - rr, y);
+  ctx.arcTo(x + w, y, x + w, y + rr, rr);
+  ctx.lineTo(x + w, y + h - rr);
+  ctx.arcTo(x + w, y + h, x + w - rr, y + h, rr);
+  ctx.lineTo(x + rr, y + h);
+  ctx.arcTo(x, y + h, x, y + h - rr, rr);
+  ctx.lineTo(x, y + rr);
+  ctx.arcTo(x, y, x + rr, y, rr);
+  ctx.closePath();
+}
+function dsShadow(ctx, level, color) {
+  const lv = Number(level) || 0;
+  if (!lv) { ctx.shadowColor = 'rgba(0,0,0,0)'; ctx.shadowBlur = 0; ctx.shadowOffsetY = 0; return; }
+  ctx.shadowColor = color || `rgba(20,20,40,${0.08 + lv * 0.05})`;
+  ctx.shadowBlur = 10 + lv * 16;
+  ctx.shadowOffsetY = 4 + lv * 7;
+  ctx.shadowOffsetX = 0;
+}
+
+// ── 글자 배치 (줄바꿈 · 강조 · 자동 크기 맞춤) ──────────────────────────
+const dsTextCache = new Map();
+// 글자 단위로 나누기 — 👨‍👩‍👧 같은 합쳐진 이모지는 한 글자로
+const _dsSeg = (typeof Intl !== 'undefined' && Intl.Segmenter) ? new Intl.Segmenter('ko', { granularity: 'grapheme' }) : null;
+function dsChars(s) {
+  s = String(s == null ? '' : s);
+  if (_dsSeg) { const out = []; for (const g of _dsSeg.segment(s)) out.push(g.segment); return out; }
+  return Array.from(s);
+}
+function dsParseRuns(text) {
+  // "**강조**" 부분을 강조 표시로 나누기 (강조가 여러 줄에 걸쳐도 됨)
+  const out = [];
+  String(text == null ? '' : text).split(/(\*\*[\s\S]+?\*\*)/g).forEach(part => {
+    if (!part) return;
+    if (/^\*\*[\s\S]+\*\*$/.test(part)) out.push({ t: part.slice(2, -2), em: true });
+    else { const t = part.replace(/\*\*/g, ''); if (t) out.push({ t, em: false }); } // 짝 안 맞는 ** 는 지움
+  });
+  return out;
+}
+function dsMeasure(ctx, s, ls) {
+  const w = ctx.measureText(s).width;
+  return w + (ls ? ls * Math.max(0, dsChars(s).length - 1) : 0);
+}
+// 문단(줄바꿈 기준) → 단어 목록. 강조 경계에서 붙어 있는 글자는 한 단어로 묶음 (예: "**3가지**를")
+function dsParagraphs(text) {
+  const paras = [[]];
+  dsParseRuns(text).forEach(r => {
+    r.t.split('\n').forEach((seg, si) => {
+      if (si > 0) paras.push([]);
+      if (seg) paras[paras.length - 1].push({ t: seg, em: r.em });
+    });
+  });
+  return paras.map(runs => {
+    const toks = []; let glue = false;
+    runs.forEach(r => {
+      r.t.split(/(\s+)/).forEach(part => {
+        if (!part) return;
+        if (/^\s+$/.test(part)) { toks.push({ sp: true, pieces: [{ t: part, em: r.em }] }); glue = false; }
+        else if (glue && toks.length && !toks[toks.length - 1].sp) { toks[toks.length - 1].pieces.push({ t: part, em: r.em }); }
+        else { toks.push({ sp: false, pieces: [{ t: part, em: r.em }] }); glue = true; }
+      });
+    });
+    return toks;
+  });
+}
+function dsLayoutText(ctx, el, spec) {
+  const fam = dsFamily(el.font || 'body', spec);
+  const weight = dsWeight(fam, el.weight);
+  const baseSize = dsClamp(Number(el.size) || 56, 12, 400);
+  const maxW = Math.max(40, Number(el.w) || (DS_W - 2 * (Number(el.x) || 90)));
+  // 높이를 안 정한 글자도 화면 아래(인스타 버튼 자리, 330칸) 위에서 끝나도록 자동으로 줄임
+  // (단, 너무 작아지지 않게 원래 크기의 75%까지만)
+  const explicitH = Number(el.h) > 0;
+  const maxH = explicitH ? Number(el.h) : Math.max(baseSize * 1.15, DS_H - 330 - (Number(el.y) || 0));
+  const lhMul = dsClamp(Number(el.lh) || 1.32, 0.8, 2.4);
+  const lsEm = dsClamp(Number(el.ls) || 0, -0.15, 0.6);
+  const key = [el.text, fam, weight, baseSize, maxW, maxH, lhMul, lsEm].join('¦');
+  if (dsTextCache.has(key)) return dsTextCache.get(key);
+
+  const paras = dsParagraphs(el.text);
+  const tryLayout = (size) => {
+    ctx.font = dsFontStr(fam, weight, size);
+    const ls = lsEm * size;
+    const lines = [];
+    let overflow = false;
+    // 한 줄 = 조각 목록. 줄 폭 = 조각 폭 합 + 조각 사이 자간
+    let line = []; let lw = 0;
+    const addPiece = (p) => { lw += (line.length ? ls : 0) + p.w; line.push(p); };
+    const pushLine = () => {
+      while (line.length && /^\s+$/.test(line[line.length - 1].t)) { const q = line.pop(); lw -= q.w + (line.length ? ls : 0); }
+      lines.push({ runs: line, w: Math.max(0, lw) }); line = []; lw = 0;
+    };
+    for (const toks of paras) {
+      for (const tok of toks) {
+        const pieces = tok.pieces.map(pc => ({ t: pc.t, em: pc.em, w: dsMeasure(ctx, pc.t, ls) }));
+        const tw = pieces.reduce((a, pc) => a + pc.w, 0) + ls * (pieces.length - 1);
+        if (tok.sp) { if (line.length) pieces.forEach(addPiece); continue; }
+        if (lw + (line.length ? ls : 0) + tw > maxW && line.length) pushLine();
+        if (tw <= maxW) { pieces.forEach(addPiece); continue; }
+        // 한 단어가 너무 길면 글자 단위로 자르기
+        overflow = true;
+        for (const pc of pieces) {
+          let chunk = '';
+          for (const ch of dsChars(pc.t)) {
+            const cw = dsMeasure(ctx, chunk + ch, ls);
+            if (lw + (line.length ? ls : 0) + cw > maxW && (chunk || line.length)) {
+              if (chunk) addPiece({ t: chunk, em: pc.em, w: dsMeasure(ctx, chunk, ls) });
+              pushLine(); chunk = ch;
+            } else chunk += ch;
+          }
+          if (chunk) addPiece({ t: chunk, em: pc.em, w: dsMeasure(ctx, chunk, ls) });
+        }
+      }
+      pushLine();
+    }
+    const lineH = size * lhMul;
+    const height = lines.length ? lineH * (lines.length - 1) + size * 1.12 : 0;
+    return { lines, size, lineH, height, fam, weight, ls, overflow, maxW };
+  };
+  let size = baseSize;
+  let lay = tryLayout(size);
+  // 상자 높이를 넘거나 단어가 잘리면 조금씩 줄이기 (최소 원래의 45%)
+  for (let i = 0; i < 16 && (((maxH && lay.height > maxH) && size > baseSize * (explicitH ? 0.45 : 0.75)) || (lay.overflow && size > baseSize * 0.45)); i++) {
+    size *= 0.93;
+    lay = tryLayout(size);
+  }
+  if (dsTextCache.size > 600) dsTextCache.clear();
+  dsTextCache.set(key, lay);
+  return lay;
+}
+
+// 강조 스타일: color(색만) / marker(형광펜) / underline(밑줄) / box(상자) / bold(굵게 느낌: 색+약간 큰 글씨 없음)
+function dsDrawText(ctx, el, spec, st) {
+  const lay = dsLayoutText(ctx, el, spec);
+  const x = Number(el.x) || 0, y = Number(el.y) || 0;
+  const align = el.align || 'left';
+  const color = dsColor(el.color, spec, dsColor('ink', spec, '#222222'));
+  const hl = dsColor(el.hl, spec, dsColor('accent', spec, '#ff6b4a'));
+  const hlStyle = el.hlStyle || 'color';
+  const hlBg = dsColor(el.hlBg, spec, dsColor('soft', spec, 'rgba(255,220,120,0.7)'));
+  ctx.font = dsFontStr(lay.fam, lay.weight, lay.size);
+  ctx.textBaseline = 'alphabetic';
+  if (el.shadow) dsShadow(ctx, el.shadow, el.shadowColor ? dsColor(el.shadowColor, spec) : 'rgba(0,0,0,0.28)');
+  // 글자 수 (타자 효과)
+  let total = 0; lay.lines.forEach(l => l.runs.forEach(r => { total += dsChars(r.t).length; }));
+  let budget = st.chars >= 1 ? Infinity : Math.floor(total * st.chars);
+
+  // 숫자 세기 효과
+  const countText = (s) => {
+    if (st.count >= 1) return s;
+    return s.replace(/\d[\d,]*(\.\d+)?/g, (m) => {
+      const n = parseFloat(m.replace(/,/g, ''));
+      if (!Number.isFinite(n)) return m;
+      const dec = (m.split('.')[1] || '').length;
+      const v = n * st.count;
+      const str = dec ? v.toFixed(dec) : String(Math.round(v));
+      return m.includes(',') ? Number(str).toLocaleString('en-US') : str;
+    });
+  };
+
+  lay.lines.forEach((line, li) => {
+    const baseY = y + lay.size * 0.92 + li * lay.lineH;
+    let cx = x;
+    if (align === 'center') cx = x + (lay.maxW - line.w) / 2;
+    else if (align === 'right') cx = x + lay.maxW - line.w;
+    line.runs.forEach(run => {
+      if (budget <= 0) return;
+      let txt = countText(run.t);
+      const chars = dsChars(txt);
+      if (chars.length > budget) txt = chars.slice(0, budget).join('');
+      budget -= chars.length;
+      const rw = dsMeasure(ctx, txt, lay.ls);
+      if (run.em && !/^\s+$/.test(txt)) {
+        const saveShadow = ctx.shadowColor;
+        if (hlStyle === 'marker') {
+          ctx.shadowColor = 'rgba(0,0,0,0)';
+          ctx.fillStyle = hlBg;
+          ctx.fillRect(cx - lay.size * 0.06, baseY - lay.size * 0.38, rw + lay.size * 0.12, lay.size * 0.46);
+          ctx.shadowColor = saveShadow;
+        } else if (hlStyle === 'box') {
+          ctx.shadowColor = 'rgba(0,0,0,0)';
+          ctx.fillStyle = hlBg;
+          dsRoundRect(ctx, cx - lay.size * 0.14, baseY - lay.size * 0.98, rw + lay.size * 0.28, lay.size * 1.22, lay.size * 0.18);
+          ctx.fill();
+          ctx.shadowColor = saveShadow;
+        }
+      }
+      // 강조 글자색: 형광펜·상자는 hlText(없으면 본문색), 색·밑줄은 강조색
+      if (!run.em) ctx.fillStyle = color;
+      else if (hlStyle === 'marker' || hlStyle === 'box') ctx.fillStyle = el.hlText ? dsColor(el.hlText, spec, color) : color;
+      else ctx.fillStyle = hl;
+      if (lay.ls) {
+        let px = cx;
+        for (const ch of dsChars(txt)) { ctx.fillText(ch, px, baseY); px += ctx.measureText(ch).width + lay.ls; }
+      } else ctx.fillText(txt, cx, baseY);
+      if (run.em && hlStyle === 'underline') {
+        ctx.fillStyle = hl;
+        ctx.fillRect(cx, baseY + lay.size * 0.1, rw, Math.max(3, lay.size * 0.07));
+      }
+      cx += rw + lay.ls; // 조각 사이 자간 (줄 폭 계산과 맞춤)
+    });
+  });
+  dsShadow(ctx, 0);
+  return lay;
+}
+
+// 요소 크기 (회전·확대 기준점 계산용)
+function dsElBox(ctx, el, spec) {
+  const x = Number(el.x) || 0, y = Number(el.y) || 0;
+  if (el.type === 'text') {
+    const lay = dsLayoutText(ctx, el, spec);
+    return { x, y, w: lay.maxW, h: Number(el.h) || lay.height };
+  }
+  if (el.type === 'pill') {
+    const p = dsPillMetrics(ctx, el, spec);
+    return { x, y, w: p.w, h: p.h };
+  }
+  if (el.type === 'line' || el.type === 'arrow') {
+    const x2 = Number(el.x2) || x, y2 = Number(el.y2) || y;
+    return { x: Math.min(x, x2), y: Math.min(y, y2), w: Math.abs(x2 - x) || 1, h: Math.abs(y2 - y) || 1 };
+  }
+  if (el.type === 'emoji') {
+    const s = Number(el.size) || 120;
+    return { x, y, w: s * 1.15, h: s * 1.15 };
+  }
+  if (el.type === 'ring') { const d = Number(el.w) || 100; return { x, y, w: d, h: d }; } // 도넛은 지름(w)으로만 그림
+  return { x, y, w: Number(el.w) || 100, h: Number(el.h) || Number(el.w) || 100 };
+}
+
+function dsPillMetrics(ctx, el, spec) {
+  const fam = dsFamily(el.font || 'body', spec);
+  const weight = dsWeight(fam, el.weight || 700);
+  const size = dsClamp(Number(el.size) || 40, 12, 200);
+  ctx.font = dsFontStr(fam, weight, size);
+  const tw = ctx.measureText(String(el.text || '')).width;
+  const padX = Number(el.padX) || size * 0.8;
+  const h = Number(el.h) || size * 2.0;
+  const w = Number(el.w) || tw + padX * 2;
+  return { fam, weight, size, tw, w, h };
+}
+
+// ── 요소 그리기 ──────────────────────────────────────────────────────
+function dsDrawEl(ctx, el, spec, t, assets) {
+  const st = dsAnimState(el, t);
+  const baseA = el.opacity == null ? 1 : dsClamp(Number(el.opacity));
+  const alpha = st.a * baseA;
+  if (alpha <= 0.002 || st.reveal <= 0.001) return;
+  const box = dsElBox(ctx, el, spec);
+  const rot = (Number(el.rot) || 0) + st.r;
+  ctx.save();
+  try {
+  ctx.globalAlpha = alpha;
+  // 이동·회전·확대 (요소 가운데를 기준으로)
+  const cx = box.x + box.w / 2, cy = box.y + box.h / 2;
+  ctx.translate(cx + st.dx, cy + st.dy);
+  if (rot) ctx.rotate(rot * Math.PI / 180);
+  if (st.s !== 1) ctx.scale(st.s, st.s);
+  ctx.translate(-cx, -cy);
+  // 닦아내듯 나타나기
+  if (st.reveal < 1 && el.type !== 'line' && el.type !== 'arrow') {
+    ctx.beginPath();
+    if (st.revealDir === 'y') ctx.rect(box.x - 40, box.y + box.h * (1 - st.reveal) - 10, box.w + 80, box.h * st.reveal + 50);
+    else ctx.rect(box.x - 40, box.y - 40, (box.w + 80) * st.reveal, box.h + 80);
+    ctx.clip();
+  }
+
+  const T = el.type;
+  if (T === 'text') {
+    dsDrawText(ctx, el, spec, st);
+  } else if (T === 'box') {
+    dsShadow(ctx, el.shadow);
+    ctx.fillStyle = dsFill(ctx, el.fill, spec, box.x, box.y, box.w, box.h, dsColor('card', spec, '#ffffff'));
+    dsRoundRect(ctx, box.x, box.y, box.w, box.h, el.radius);
+    if (el.fill !== 'none') ctx.fill();
+    dsShadow(ctx, 0);
+    if (el.stroke) {
+      ctx.lineWidth = Number(el.strokeW) || 4;
+      ctx.strokeStyle = dsColor(el.stroke, spec, '#222');
+      if (el.dash) ctx.setLineDash([Number(el.dash) || 12, Number(el.dash) || 12]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  } else if (T === 'circle') {
+    dsShadow(ctx, el.shadow);
+    ctx.beginPath();
+    ctx.ellipse(box.x + box.w / 2, box.y + box.h / 2, Math.abs(box.w / 2), Math.abs(box.h / 2), 0, 0, Math.PI * 2);
+    if (el.fill !== 'none') { ctx.fillStyle = dsFill(ctx, el.fill, spec, box.x, box.y, box.w, box.h, dsColor('accent', spec, '#ff8a65')); ctx.fill(); }
+    dsShadow(ctx, 0);
+    if (el.stroke) { ctx.lineWidth = Number(el.strokeW) || 4; ctx.strokeStyle = dsColor(el.stroke, spec, '#222'); ctx.stroke(); }
+  } else if (T === 'pill') {
+    if (!String(el.text || '').trim()) return; // 글자 없는 빈 알약은 그리지 않음
+    const p = dsPillMetrics(ctx, el, spec);
+    dsShadow(ctx, el.shadow);
+    ctx.fillStyle = dsFill(ctx, el.fill, spec, box.x, box.y, p.w, p.h, dsColor('ink', spec, '#222'));
+    dsRoundRect(ctx, box.x, box.y, p.w, p.h, el.radius == null ? p.h / 2 : el.radius);
+    if (el.fill !== 'none') ctx.fill();
+    dsShadow(ctx, 0);
+    if (el.stroke) { ctx.lineWidth = Number(el.strokeW) || 3; ctx.strokeStyle = dsColor(el.stroke, spec, '#222'); ctx.stroke(); }
+    ctx.font = dsFontStr(p.fam, p.weight, p.size);
+    ctx.fillStyle = dsColor(el.color, spec, '#ffffff');
+    ctx.textBaseline = 'middle';
+    ctx.textAlign = 'center';
+    ctx.fillText(String(el.text || ''), box.x + p.w / 2, box.y + p.h / 2 + p.size * 0.04);
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'alphabetic';
+  } else if (T === 'line' || T === 'arrow') {
+    const x1 = Number(el.x) || 0, y1 = Number(el.y) || 0;
+    const x2 = Number(el.x2) || x1, y2 = Number(el.y2) || y1;
+    const k = st.draw;
+    const ex = x1 + (x2 - x1) * k, ey = y1 + (y2 - y1) * k;
+    ctx.strokeStyle = dsColor(el.color, spec, dsColor('ink', spec, '#222'));
+    ctx.lineWidth = Number(el.width) || 6;
+    ctx.lineCap = 'round';
+    if (el.dash) ctx.setLineDash([Number(el.dash), Number(el.dash) * 0.9]);
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(ex, ey); ctx.stroke();
+    ctx.setLineDash([]);
+    if (T === 'arrow' && k > 0.85) {
+      const ang = Math.atan2(y2 - y1, x2 - x1);
+      const hs = (Number(el.head) || ctx.lineWidth * 3.2) * dsClamp((k - 0.85) / 0.15);
+      ctx.fillStyle = ctx.strokeStyle;
+      ctx.beginPath();
+      ctx.moveTo(ex, ey);
+      ctx.lineTo(ex - hs * Math.cos(ang - 0.5), ey - hs * Math.sin(ang - 0.5));
+      ctx.lineTo(ex - hs * Math.cos(ang + 0.5), ey - hs * Math.sin(ang + 0.5));
+      ctx.closePath(); ctx.fill();
+    }
+  } else if (T === 'image') {
+    const img = assets && assets.photos && assets.photos[el.src];
+    const fr = el.frame === 'polaroid';
+    const pad = fr ? Math.max(16, box.w * 0.05) : 0;
+    const bottomPad = fr ? pad * 3.2 : 0;
+    dsShadow(ctx, el.shadow == null ? (fr ? 2 : 0) : el.shadow);
+    if (fr) { ctx.fillStyle = '#ffffff'; ctx.fillRect(box.x, box.y, box.w, box.h); }
+    dsShadow(ctx, 0);
+    const ix = box.x + pad, iy = box.y + pad, iw = box.w - pad * 2, ih = box.h - pad - (fr ? bottomPad : 0);
+    ctx.save();
+    try {
+    dsRoundRect(ctx, ix, iy, iw, ih, fr ? 2 : el.radius);
+    ctx.clip();
+    if (img && img.naturalWidth) {
+      const ar = img.naturalWidth / img.naturalHeight, tar = iw / ih;
+      let sw, sh, sx, sy;
+      if (el.fit === 'contain') {
+        ctx.fillStyle = dsColor(el.bg, spec, '#f2f2f2'); ctx.fillRect(ix, iy, iw, ih);
+        let dw = iw, dh = iw / ar; if (dh > ih) { dh = ih; dw = ih * ar; }
+        ctx.drawImage(img, ix + (iw - dw) / 2, iy + (ih - dh) / 2, dw, dh);
+      } else {
+        if (ar > tar) { sh = img.naturalHeight; sw = sh * tar; sx = (img.naturalWidth - sw) / 2; sy = 0; }
+        else { sw = img.naturalWidth; sh = sw / tar; sx = 0; sy = (img.naturalHeight - sh) * (el.focusY == null ? 0.4 : dsClamp(Number(el.focusY))); }
+        // 사진 안에서 천천히 확대 (켄번스)
+        const kb = el.kenburns ? 1 + 0.08 * dsClamp(t / 6) : 1;
+        ctx.translate(ix + iw / 2, iy + ih / 2); ctx.scale(kb, kb); ctx.translate(-(ix + iw / 2), -(iy + ih / 2));
+        ctx.drawImage(img, sx, sy, sw, sh, ix, iy, iw, ih);
+      }
+    } else {
+      ctx.fillStyle = dsColor('soft', spec, '#eeeeee'); ctx.fillRect(ix, iy, iw, ih);
+    }
+    } finally { ctx.restore(); }
+    if (el.tint) { ctx.save(); dsRoundRect(ctx, ix, iy, iw, ih, fr ? 2 : el.radius); ctx.clip(); ctx.fillStyle = dsColor(el.tint, spec, 'rgba(0,0,0,0.25)'); ctx.fillRect(ix, iy, iw, ih); ctx.restore(); }
+    if (el.tape) {
+      ctx.save();
+      ctx.translate(box.x + box.w / 2, box.y);
+      ctx.rotate(-0.06);
+      ctx.fillStyle = dsColor(el.tapeColor, spec, 'rgba(255,236,170,0.82)');
+      ctx.fillRect(-box.w * 0.16, -22, box.w * 0.32, 46);
+      ctx.restore();
+    }
+  } else if (T === 'emoji') {
+    const s = Number(el.size) || 120;
+    ctx.font = `${s}px ${DS_EMOJI_FONT}`;
+    ctx.fillStyle = dsColor(el.color, spec, dsColor('ink', spec, '#222222')); // 흑백 이모지만 있는 기기 대비
+    ctx.textBaseline = 'top';
+    if (String(el.text || '').trim()) ctx.fillText(String(el.text), box.x, box.y); // 비어 있으면 아무것도 안 그림
+    ctx.textBaseline = 'alphabetic';
+  } else if (T === 'checkbox') {
+    const s = box.w;
+    const at = el.checkAt == null ? null : Number(el.checkAt);
+    const k = at == null ? (el.checked ? 1 : 0) : dsInOutCubic(dsClamp((t - at) / 0.35));
+    ctx.lineWidth = Math.max(4, s * 0.08);
+    ctx.strokeStyle = dsColor(el.color, spec, dsColor('ink', spec, '#222'));
+    dsRoundRect(ctx, box.x, box.y, s, s, s * 0.18);
+    if (k > 0 && el.fill) { ctx.fillStyle = dsColor(el.fill, spec, '#ffd54f'); ctx.globalAlpha = alpha * Math.min(1, k * 2); ctx.fill(); ctx.globalAlpha = alpha; }
+    ctx.stroke();
+    if (k > 0) {
+      ctx.strokeStyle = dsColor(el.checkColor, spec, dsColor('ink', spec, '#222'));
+      ctx.lineWidth = Math.max(6, s * 0.13);
+      ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+      const p1 = [box.x + s * 0.22, box.y + s * 0.52], p2 = [box.x + s * 0.43, box.y + s * 0.72], p3 = [box.x + s * 0.8, box.y + s * 0.28];
+      ctx.beginPath(); ctx.moveTo(p1[0], p1[1]);
+      if (k < 0.45) { const q = k / 0.45; ctx.lineTo(p1[0] + (p2[0] - p1[0]) * q, p1[1] + (p2[1] - p1[1]) * q); }
+      else { const q = (k - 0.45) / 0.55; ctx.lineTo(p2[0], p2[1]); ctx.lineTo(p2[0] + (p3[0] - p2[0]) * q, p2[1] + (p3[1] - p2[1]) * q); }
+      ctx.stroke();
+    }
+  } else if (T === 'bar') {
+    const v = dsClamp(Number(el.value) || 0);
+    const an = el.anim || {};
+    const g = dsOutCubic(dsClamp((t - (Number(an.at) || 0) - 0.1) / (Number(an.dur) || 1.0)));
+    const r = el.radius == null ? box.h / 2 : el.radius;
+    ctx.fillStyle = dsColor(el.track, spec, 'rgba(0,0,0,0.08)');
+    dsRoundRect(ctx, box.x, box.y, box.w, box.h, r); ctx.fill();
+    if (v * g > 0.001) {
+      ctx.fillStyle = dsFill(ctx, el.fill, spec, box.x, box.y, box.w, box.h, dsColor('accent', spec, '#ff7a45'));
+      dsRoundRect(ctx, box.x, box.y, Math.max(box.h, box.w * v * g), box.h, r); ctx.fill();
+    }
+  } else if (T === 'ring') {
+    // 도넛형 진행률
+    const v = dsClamp(Number(el.value) || 0);
+    const an = el.anim || {};
+    const g = dsOutCubic(dsClamp((t - (Number(an.at) || 0) - 0.1) / (Number(an.dur) || 1.0)));
+    const rr = Math.abs(box.w / 2), lw = dsClamp(Number(el.width) || rr * 0.18, 1, Math.max(1, rr));
+    const ccx = box.x + rr, ccy = box.y + rr;
+    ctx.lineWidth = lw; ctx.lineCap = 'round';
+    ctx.strokeStyle = dsColor(el.track, spec, 'rgba(0,0,0,0.08)');
+    ctx.beginPath(); ctx.arc(ccx, ccy, Math.max(0, rr - lw / 2), 0, Math.PI * 2); ctx.stroke();
+    if (v * g > 0.001) {
+      ctx.strokeStyle = dsFill(ctx, el.fill, spec, box.x, box.y, box.w, box.w, dsColor('accent', spec, '#ff7a45'));
+      ctx.beginPath(); ctx.arc(ccx, ccy, Math.max(0, rr - lw / 2), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * v * g); ctx.stroke();
+    }
+  } else if (T === 'pattern') {
+    // 영역 안에 점·줄무늬·격자 무늬
+    dsPattern(ctx, el.kind || 'dots', box.x, box.y, box.w, box.h, dsColor(el.color, spec, 'rgba(0,0,0,0.08)'), Number(el.gap) || 48, t, el.move);
+  }
+  } finally {
+    ctx.restore(); // 요소 하나가 오류를 내도 다음 요소에 영향이 없게
+  }
+}
+
+function dsPattern(ctx, kind, x, y, w, h, color, gap, t, move) {
+  // 너무 작거나 음수면 화면이 멈출 수 있어서 제한 (넓은 영역일수록 최소 간격을 키워 점 개수를 일정 수준 이하로)
+  const minGap = Math.max(12, Math.sqrt(Math.abs(w * h) / 6000));
+  gap = dsClamp(Number(gap) || 48, minGap, 400);
+  ctx.save();
+  ctx.beginPath(); ctx.rect(x, y, w, h); ctx.clip();
+  const off = move ? (t * 18) % gap : 0;
+  ctx.fillStyle = color; ctx.strokeStyle = color;
+  if (kind === 'dots') {
+    const r = Math.max(2, gap * 0.07);
+    for (let yy = y - gap + off; yy < y + h + gap; yy += gap) for (let xx = x; xx < x + w + gap; xx += gap) { ctx.beginPath(); ctx.arc(xx, yy, r, 0, Math.PI * 2); ctx.fill(); }
+  } else if (kind === 'grid') {
+    ctx.lineWidth = 2;
+    for (let xx = x; xx < x + w; xx += gap) { ctx.beginPath(); ctx.moveTo(xx, y); ctx.lineTo(xx, y + h); ctx.stroke(); }
+    for (let yy = y + off; yy < y + h; yy += gap) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+  } else if (kind === 'lines') {
+    ctx.lineWidth = 2;
+    for (let yy = y + off; yy < y + h; yy += gap) { ctx.beginPath(); ctx.moveTo(x, yy); ctx.lineTo(x + w, yy); ctx.stroke(); }
+  } else if (kind === 'stripes') {
+    ctx.lineWidth = gap * 0.35;
+    for (let xx = x - h + off * 2; xx < x + w + h; xx += gap) { ctx.beginPath(); ctx.moveTo(xx, y + h); ctx.lineTo(xx + h, y); ctx.stroke(); }
+  }
+  ctx.restore();
+}
+
+// ── 배경 ────────────────────────────────────────────────────────────
+function dsDrawBg(ctx, bg, spec, t) {
+  const b = bg || spec.background || {};
+  const type = b.type || 'solid';
+  const c0 = dsColor((b.colors && b.colors[0]) || b.color, spec, dsColor('bg', spec, '#ffffff'));
+  if (type === 'gradient' && b.colors && b.colors.length >= 2) {
+    ctx.fillStyle = dsFill(ctx, [b.colors[0], b.colors[1], b.angle == null ? 180 : b.angle], spec, 0, 0, DS_W, DS_H, c0);
+  } else ctx.fillStyle = c0;
+  ctx.fillRect(0, 0, DS_W, DS_H);
+  const c1 = dsColor(b.colors && b.colors[1], spec, 'rgba(0,0,0,0.06)');
+  if (type === 'dots' || type === 'grid' || type === 'lines' || type === 'stripes') {
+    dsPattern(ctx, type, 0, 0, DS_W, DS_H, dsColor(b.patternColor, spec, type === 'stripes' ? 'rgba(0,0,0,0.035)' : 'rgba(0,0,0,0.07)'), Number(b.gap) || 54, t, b.move !== false);
+  } else if (type === 'blobs') {
+    const cols = (b.colors || []).slice(1);
+    const blobs = cols.length ? cols : ['soft', 'accent2'];
+    blobs.forEach((c, i) => {
+      const bx = [180, 900, 300, 820][i % 4] + Math.sin(t * 0.5 + i * 2) * 60;
+      const by = [300, 1500, 1350, 520][i % 4] + Math.cos(t * 0.4 + i) * 70;
+      const br = [380, 460, 300, 260][i % 4];
+      ctx.globalAlpha = 0.55;
+      ctx.fillStyle = dsColor(c, spec, c1);
+      ctx.beginPath(); ctx.arc(bx, by, br, 0, Math.PI * 2); ctx.fill();
+      ctx.globalAlpha = 1;
+    });
+  } else if (type === 'paper') {
+    // 종이 질감 느낌 — 아주 옅은 가로줄
+    dsPattern(ctx, 'lines', 0, 0, DS_W, DS_H, dsColor(b.patternColor, spec, 'rgba(120,90,60,0.06)'), 64, t, false);
+  } else if (type === 'split') {
+    // 위아래 두 색
+    const r = dsClamp(Number(b.ratio) || 0.5, 0.1, 0.9);
+    ctx.fillStyle = c1; ctx.fillRect(0, DS_H * r, DS_W, DS_H * (1 - r));
+  }
+}
+
+// ── 장면 · 시간 ─────────────────────────────────────────────────────
+function dsSceneTimes(spec) {
+  const starts = []; let acc = 0;
+  (spec.scenes || []).forEach(sc => { starts.push(acc); acc += dsClamp(Number(sc.dur) || 4, 1.5, 15); });
+  return { starts, total: acc };
+}
+function dsSceneAt(spec, t) {
+  const { starts, total } = dsSceneTimes(spec);
+  const n = (spec.scenes || []).length;
+  if (!n) return { i: 0, local: 0, total };
+  let i = n - 1;
+  for (let k = 0; k < n; k++) { if (t < starts[k] + dsClamp(Number(spec.scenes[k].dur) || 4, 1.5, 15)) { i = k; break; } }
+  return { i, local: Math.max(0, t - starts[i]), total, start: starts[i] };
+}
+function dsRenderScene(ctx, spec, i, local, assets) {
+  const sc = spec.scenes[i];
+  if (!sc) return;
+  ctx.save();
+  dsDrawBg(ctx, sc.bg, spec, local);
+  (sc.els || []).forEach(el => {
+    try { dsDrawEl(ctx, el, spec, local, assets); } catch (e) { /* 한 요소가 잘못돼도 나머지는 그림 */ }
+  });
+  ctx.restore();
+}
+function dsCamZoom(spec, i, frac) {
+  const sc = spec.scenes[i] || {};
+  const mode = sc.camera || spec.camera || 'none';
+  const amt = 0.05;
+  if (mode === 'in') return 1 + amt * frac;
+  if (mode === 'out') return 1 + amt * (1 - frac);
+  return 1;
+}
+
+// 오프스크린 캔버스 재사용
+const dsOff = { a: null, b: null };
+function dsGetOff(key) {
+  if (!dsOff[key]) { const c = document.createElement('canvas'); c.width = DS_W; c.height = DS_H; dsOff[key] = c; }
+  return dsOff[key];
+}
+
+// 전체 영상의 t초 화면을 ctx(크기 무관)에 그리기
+function dsRenderAt(ctx, spec, t, assets) {
+  const cw = ctx.canvas.width, ch = ctx.canvas.height;
+  const sx = cw / DS_W, sy = ch / DS_H;
+  if (!spec || !spec.scenes || !spec.scenes.length) {
+    ctx.fillStyle = '#f4f4f6'; ctx.fillRect(0, 0, cw, ch); return;
+  }
+  const { i, local } = dsSceneAt(spec, t);
+  const sc = spec.scenes[i];
+  const dur = dsClamp(Number(sc.dur) || 4, 1.5, 15);
+  const cur = dsGetOff('a');
+  const cctx = cur.getContext('2d');
+  cctx.setTransform(1, 0, 0, 1, 0, 0);
+  dsRenderScene(cctx, spec, i, local, assets);
+  const zoom = dsCamZoom(spec, i, dsClamp(local / dur));
+
+  const drawZ = (img, z, dx, dy, a) => {
+    const w = DS_W * z, h = DS_H * z;
+    ctx.globalAlpha = a == null ? 1 : a;
+    ctx.drawImage(img, ((DS_W - w) / 2 + (dx || 0)) * sx, ((DS_H - h) / 2 + (dy || 0)) * sy, w * sx, h * sy);
+    ctx.globalAlpha = 1;
+  };
+  ctx.save();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.imageSmoothingEnabled = true;
+  ctx.imageSmoothingQuality = 'high';
+  const trans = i > 0 ? (sc.transition || spec.transition || 'fade') : 'cut';
+  if (trans !== 'cut' && local < DS_TRANS) {
+    const p = dsInOutCubic(local / DS_TRANS);
+    const prev = dsGetOff('b');
+    const pctx = prev.getContext('2d');
+    pctx.setTransform(1, 0, 0, 1, 0, 0);
+    const pd = dsClamp(Number(spec.scenes[i - 1].dur) || 4, 1.5, 15);
+    dsRenderScene(pctx, spec, i - 1, pd, assets);
+    const pz = dsCamZoom(spec, i - 1, 1);
+    const zm = pz + (zoom - pz) * p;
+    ctx.fillStyle = '#000'; ctx.fillRect(0, 0, cw, ch);
+    if (trans === 'fade') { drawZ(prev, zm); drawZ(cur, zm, 0, 0, p); }
+    else if (trans === 'slideUp') { drawZ(prev, pz, 0, -DS_H * p); drawZ(cur, zoom, 0, DS_H * (1 - p)); }
+    else if (trans === 'slideDown') { drawZ(prev, pz, 0, DS_H * p); drawZ(cur, zoom, 0, -DS_H * (1 - p)); }
+    else if (trans === 'slideL') { drawZ(prev, pz, -DS_W * p, 0); drawZ(cur, zoom, DS_W * (1 - p), 0); }
+    else if (trans === 'slideR') { drawZ(prev, pz, DS_W * p, 0); drawZ(cur, zoom, -DS_W * (1 - p), 0); }
+    else if (trans === 'zoom') { drawZ(prev, pz * (1 + 0.25 * p), 0, 0, 1); drawZ(cur, zoom * (0.85 + 0.15 * p), 0, 0, p); }
+    else if (trans === 'wipe' || trans === 'circle') {
+      drawZ(prev, zm);
+      ctx.save(); ctx.beginPath();
+      if (trans === 'wipe') ctx.rect(0, 0, cw * p, ch);
+      else ctx.arc(cw / 2, ch / 2, Math.hypot(cw, ch) / 2 * p, 0, Math.PI * 2);
+      ctx.clip(); drawZ(cur, zm); ctx.restore();
+    } else drawZ(cur, zoom);
+  } else {
+    drawZ(cur, zoom);
+  }
+  ctx.restore();
+}
+
+// ── 설계도 정리 (AI가 이상한 값을 넣어도 안전하게) ─────────────────────
+const DS_EL_TYPES = ['text', 'box', 'circle', 'pill', 'line', 'arrow', 'image', 'emoji', 'checkbox', 'bar', 'ring', 'pattern'];
+function dsNormalizeSpec(raw, center, photoCount) {
+  const spec = (raw && typeof raw === 'object') ? JSON.parse(JSON.stringify(raw)) : {};
+  spec.style = spec.style && typeof spec.style === 'object' ? spec.style : {};
+  spec.style.palette = spec.style.palette && typeof spec.style.palette === 'object' ? spec.style.palette : {};
+  const pal = spec.style.palette;
+  ['bg', 'ink', 'accent', 'accent2', 'soft', 'card', 'muted'].forEach(k => {
+    if (pal[k] && !(DS_HEX.test(pal[k]) || DS_RGBA.test(pal[k]))) delete pal[k];
+  });
+  if (!pal.bg) pal.bg = '#ffffff';
+  if (!pal.ink) pal.ink = '#222222';
+  if (!pal.accent) pal.accent = '#ff6b4a';
+  spec.style.fonts = spec.style.fonts && typeof spec.style.fonts === 'object' ? spec.style.fonts : {};
+  ['head', 'body', 'hand', 'accent'].forEach(k => { if (spec.style.fonts[k] && !DS_FONTS[spec.style.fonts[k]]) spec.style.fonts[k] = 'Noto Sans KR'; });
+  if (!spec.style.fonts.head) spec.style.fonts.head = 'Noto Sans KR';
+  if (!spec.style.fonts.body) spec.style.fonts.body = 'Noto Sans KR';
+  spec.scenes = Array.isArray(spec.scenes) ? spec.scenes.filter(sc => sc && typeof sc === 'object').slice(0, 14) : [];
+  if (spec.background && typeof spec.background === 'object' && spec.background.gap != null) spec.background.gap = dsClamp(Number(spec.background.gap) || 54, 12, 400);
+  const phoneRe = /0\d{1,2}[-.\s]?\d{3,4}[-.\s]?\d{4}/g;
+  spec.scenes.forEach(sc => {
+    sc.dur = dsClamp(Number(sc.dur) || 4, 1.5, 15);
+    if (sc.bg && typeof sc.bg === 'object' && sc.bg.gap != null) sc.bg.gap = dsClamp(Number(sc.bg.gap) || 54, 12, 400);
+    sc.els = Array.isArray(sc.els) ? sc.els.filter(el => el && DS_EL_TYPES.includes(el.type) && !(el.type === 'image' && !photoCount)).slice(0, 40) : [];
+    sc.els.forEach(el => {
+      ['x', 'y', 'w', 'h', 'x2', 'y2'].forEach(k => {
+        if (el[k] != null) { const v = Number(el[k]); el[k] = Number.isFinite(v) ? dsClamp(v, -600, 2600) : 0; }
+      });
+      ['w', 'h'].forEach(k => { if (el[k] != null) el[k] = Math.abs(el[k]); });
+      if (el.gap != null) el.gap = dsClamp(Number(el.gap) || 48, 12, 400);
+      if (el.text != null) el.text = String(el.text);
+      // 고정 정보: 전화번호가 들어가면 항상 저장된 번호로
+      if (center && center.phone && typeof el.text === 'string') el.text = el.text.replace(phoneRe, center.phone);
+      // 사진 번호가 실제 사진 수를 넘으면 첫 사진으로
+      if (el.type === 'image') {
+        const m = /^photo(\d+)$/.exec(String(el.src || ''));
+        const n = m ? Number(m[1]) : 0;
+        if (!photoCount) el.src = '';
+        else if (!n || n > photoCount) el.src = 'photo1';
+      }
+      // 글자가 인스타 하단 버튼 영역(아래 약 300칸)에 너무 깊게 들어가면 위로 올리기
+      if ((el.type === 'text' || el.type === 'pill') && Number(el.y) > DS_H - 330) el.y = DS_H - 330;
+    });
+  });
+  return spec;
+}
+
+// 한 장면에서 글자가 가장 많이 다 보이는 순간 (장면 안 시간, 초)
+function dsSceneBestTime(spec, i) {
+  const sc = spec.scenes[i];
+  const d = dsClamp(Number(sc.dur) || 4, 1.5, 15);
+  const cands = [d - 0.04];
+  (sc.els || []).forEach(el => { if (el && el.out && el.out.at != null) { const a = Number(el.out.at) - 0.02; if (a > 0 && a < d) cands.push(a); } });
+  let best = d - 0.04, bestN = -1;
+  if (cands.length > 1) {
+    cands.forEach(tt => {
+      let n = 0;
+      (sc.els || []).forEach(el => { if (el && (el.type === 'text' || el.type === 'pill')) { try { const a = dsAnimState(el, tt); if (a.a > 0.5 && a.reveal > 0.5 && a.chars > 0.5 && a.draw > 0.5) n++; } catch (e) {} } });
+      if (n > bestN || (n === bestN && tt > best)) { bestN = n; best = tt; }
+    });
+  }
+  return best;
+}
+// 한 장면의 "다 나타난 모습" (썸네일·이미지 저장·AI 검사용)
+function dsSceneSnapshot(spec, i, assets, width) {
+  const w = width || DS_W, h = Math.round(w * DS_H / DS_W);
+  const c = document.createElement('canvas'); c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const { starts } = dsSceneTimes(spec);
+  // 보통은 장면 끝 모습. 중간에 사라지는 글자가 있으면, 글자가 가장 많이 보이는 순간을 고름
+  dsRenderAt(ctx, spec, starts[i] + dsSceneBestTime(spec, i), assets);
+  return c;
+}
+
+// ── mp4 만들기 (캔버스로 직접 그려서 빠름) ────────────────────────────
+function dsLoadMp4Muxer() {
+  if (window.Mp4Muxer) return Promise.resolve(window.Mp4Muxer);
+  return new Promise((resolve, reject) => {
+    const s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.js';
+    const tm = setTimeout(() => { try { s.remove(); } catch (e) {} reject(new Error('영상 도구를 받지 못했어요 (인터넷 확인)')); }, 20000);
+    s.onload = () => { clearTimeout(tm); window.Mp4Muxer ? resolve(window.Mp4Muxer) : reject(new Error('mp4-muxer 없음')); };
+    s.onerror = () => { clearTimeout(tm); try { s.remove(); } catch (e) {} reject(new Error('영상 도구를 받지 못했어요 (인터넷 확인)')); };
+    document.head.appendChild(s);
+  });
+}
+async function dsPickEncoder(fps) {
+  if (typeof window.VideoEncoder !== 'function' || typeof window.VideoFrame !== 'function') return null;
+  for (const codec of ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640032']) {
+    const cfg = { codec, width: DS_W, height: DS_H, bitrate: 10_000_000, framerate: fps, avc: { format: 'avc' } };
+    try { const r = await window.VideoEncoder.isConfigSupported(cfg); if (r && r.supported) return cfg; } catch (e) {}
+  }
+  return null;
+}
+async function dsExportMp4(spec, assets, onProgress, isStopped) {
+  const FPS = 30;
+  const cfg = await dsPickEncoder(FPS);
+  if (!cfg) throw new Error('NO_ENCODER');
+  const Mux = await dsLoadMp4Muxer();
+  await dsEnsureFonts(spec);
+  const { total } = dsSceneTimes(spec);
+  const frames = Math.round(total * FPS);
+  const canvas = document.createElement('canvas'); canvas.width = DS_W; canvas.height = DS_H;
+  const ctx = canvas.getContext('2d');
+  const muxer = new Mux.Muxer({ target: new Mux.ArrayBufferTarget(), video: { codec: 'avc', width: DS_W, height: DS_H, frameRate: FPS }, fastStart: 'in-memory' });
+  let err = null;
+  const enc = new window.VideoEncoder({ output: (c, m) => muxer.addVideoChunk(c, m), error: (e) => { err = e; } });
+  enc.configure(cfg);
+  try {
+    for (let f = 0; f < frames; f++) {
+      if (err) throw err;
+      if (isStopped && isStopped()) { const ce = new Error('멈춤'); ce.code = 'CANCEL'; throw ce; }
+      dsRenderAt(ctx, spec, f / FPS, assets);
+      const vf = new window.VideoFrame(canvas, { timestamp: Math.round(f * 1e6 / FPS), duration: Math.round(1e6 / FPS) });
+      enc.encode(vf, { keyFrame: f % (FPS * 2) === 0 });
+      vf.close();
+      while (enc.encodeQueueSize > 8) await new Promise(r => setTimeout(r, 3));
+      if (f % 15 === 0) { onProgress && onProgress(f / frames); await new Promise(r => setTimeout(r, 0)); }
+    }
+    await enc.flush();
+    if (err) throw err;
+    muxer.finalize();
+    return new Blob([muxer.target.buffer], { type: 'video/mp4' });
+  } finally {
+    try { if (enc.state !== 'closed') enc.close(); } catch (e) {}
+  }
+}
+
+// ============================================================================
+// 🎨 디자이너 모드 — 화면
+// ============================================================================
+const REELS_DESIGNER_URL = `https://${SUPABASE_PROJECT}.supabase.co/functions/v1/reels-designer`;
+
+// ── 로그인 표(토큰) 보관 · 자동 갱신 ─────────────────────────────────
+// 로그인할 때 받은 표는 1시간 정도면 만료됨 → 만료 1분 전이면 자동으로 새 표를 받음
+function reelsSaveSession(out) {
+  try {
+    if (!out || !out.access_token) return;
+    const expiresAt = out.expires_at ? out.expires_at * 1000 : Date.now() + (Number(out.expires_in) || 3600) * 1000;
+    sessionStorage.setItem('reels_session', JSON.stringify({ access_token: out.access_token, refresh_token: out.refresh_token, expires_at: expiresAt }));
+  } catch (e) {}
+}
+let _reelsRefreshing = null; // 같은 화면에서 새 표 받기를 두 번 동시에 하지 않게
+async function reelsGetAccessToken() {
+  let ses = null;
+  try { ses = JSON.parse(sessionStorage.getItem('reels_session') || 'null'); } catch (e) { ses = null; }
+  if (!ses || !ses.access_token) return null;
+  if (ses.expires_at && ses.expires_at - Date.now() > 60000) return ses.access_token;
+  if (!ses.refresh_token) return null;
+  if (_reelsRefreshing) return _reelsRefreshing;
+  _reelsRefreshing = (async () => {
+    let res;
+    try {
+      res = await fetch(`https://${SUPABASE_PROJECT}.supabase.co/auth/v1/token?grant_type=refresh_token`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refresh_token: ses.refresh_token }),
+      });
+    } catch (e) {
+      // 인터넷이 끊긴 것 — "로그인 만료"와 구분해서 알려 줌
+      const err = new Error('인터넷 연결을 확인해 주세요.'); err.code = 'NET'; throw err;
+    }
+    let out = null;
+    try { out = await res.json(); } catch (e) { out = null; }
+    if (out && out.access_token) { reelsSaveSession(out); return out.access_token; }
+    return null;
+  })();
+  try { return await _reelsRefreshing; } finally { _reelsRefreshing = null; }
+}
+// 다시 로그인: 페이지를 새로 고치지 않고 작은 로그인 창만 띄움 → 만들던 릴스·사진이 그대로 남음
+function reelsRelogin() {
+  try { window.dispatchEvent(new Event('reels-relogin')); } catch (e) {}
+}
+
+const DS_DEFAULT_CENTER = {
+  name: '검단ABA언어행동연구소',
+  phone: '010-8238-8132',
+  address: '인천 검단구 이음1로 377 눈담봄 905호',
+  creds: 'BCBA · QBA · KBA · ABAS',
+  programs: 'ABA 개별수업, ABA 조기교실, SCERTS 짝수업, 언어치료, 학교준비반',
+  sns: '인스타 @aba_geomdan · 블로그 blog.naver.com/aba_geomdan',
+  extra: '',
+};
+
+// AI에게 "이번엔 이런 방향 어때?" 하고 넌지시 제안하는 목록 (최근 것과 겹치지 않게 골라 줌)
+const DS_DIRECTIONS = [
+  '다크 시네마틱 (어두운 배경, 큰 굵은 제목, 따뜻한 강조색)',
+  '종이 노트·손글씨 (줄노트 배경, 손글씨 강조, 스티커 같은 이모지)',
+  '잡지 표지 에디토리얼 (명조체, 큰 장식 숫자, 얇은 선)',
+  '포스터 타이포 (화면 가득 거대한 글씨, 강렬한 2색)',
+  '파스텔 스티커 (둥근 글꼴, 말랑한 카드, 통통 튀는 등장)',
+  '인포그래픽 (막대·도넛·화살표로 보여 주기)',
+  '사진 콜라주 (폴라로이드, 테이프, 기울어진 카드)',
+  '신문·리포트 (흑백+한 가지 강조색, 단 나눔, 굵은 헤드라인)',
+  '미니멀 화이트 (넓은 여백, 가는 글씨, 한 가지 포인트)',
+  '레트로 (빈티지 색, 줄무늬, 둥근 제목체)',
+  '칠판·교실 (짙은 초록 배경, 분필 느낌 손글씨)',
+  '체크리스트 쇼 (체크박스가 하나씩 체크되는 구성)',
+  '대화 말풍선 (질문과 답이 말풍선으로 오가는 구성)',
+  '단계별 계단 (한 칸씩 올라가는 구성)',
+];
+const DS_MOOD_CHIPS = ['따뜻하게', '차분하게', '고급스럽게', '발랄하게', '신뢰감 있게', '잡지처럼', '손글씨 느낌', '어두운 배경', '파스텔', '사진 위주'];
+
+function dsLs(key, fallback) {
+  try { const v = localStorage.getItem(key); return v == null ? fallback : JSON.parse(v); } catch (e) { return fallback; }
+}
+function dsLsSet(key, v) { try { localStorage.setItem(key, JSON.stringify(v)); } catch (e) {} }
+// 파일 이름용 날짜·시간 (예: 20261029_1612)
+function dsStamp() {
+  const d = new Date(); const z = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}${z(d.getMonth() + 1)}${z(d.getDate())}_${z(d.getHours())}${z(d.getMinutes())}`;
+}
+
+function dsDescribeStyle(spec) {
+  try {
+    const s = spec.style || {}, p = s.palette || {}, f = s.fonts || {}, b = spec.background || {};
+    return `${s.name || '이름 없음'} · 배경 ${b.type || 'solid'} ${p.bg || ''} · 강조 ${p.accent || ''} · 글꼴 ${f.head || ''}/${f.body || ''} · 전환 ${spec.transition || ''}`;
+  } catch (e) { return ''; }
+}
+
+// 이미지(dataURL) → 작게 줄인 jpeg base64 (AI에게 보낼 용도)
+function dsShrinkDataUrl(src, max) {
+  return new Promise((resolve) => {
+    const im = new Image();
+    im.onload = () => {
+      try {
+        const k = Math.min(1, max / Math.max(im.naturalWidth, im.naturalHeight));
+        const c = document.createElement('canvas');
+        c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+        resolve(c.toDataURL('image/jpeg', 0.8).split(',')[1]);
+      } catch (e) { resolve(null); } // 실패해도 멈추지 않게
+    };
+    im.onerror = () => resolve(null);
+    im.src = src;
+  });
+}
+
+async function dsCallDesigner(payload, stopSignal) {
+  const token = await reelsGetAccessToken();
+  if (!token) { const err = new Error('로그인 시간이 지났어요. 다시 로그인해 주세요.'); err.code = 'AUTH'; throw err; }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), 240000);
+  // '멈추기'를 누르면 연결을 끊음 → 서버의 AI 작업도 멈춰서 비용이 더 나가지 않음
+  if (stopSignal) { if (stopSignal.aborted) controller.abort(); else stopSignal.addEventListener('abort', () => controller.abort(), { once: true }); }
+  try {
+    const res = await fetch(REELS_DESIGNER_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}`, 'apikey': SUPABASE_ANON_KEY },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    let data = null;
+    // 서버는 AI가 일하는 동안 연결이 끊기지 않게 공백을 조금씩 보내다가 마지막에 결과를 보냄
+    try { data = JSON.parse((await res.text()).trim()); } catch (e) {
+      if (res.status === 401) { const err = new Error('로그인 시간이 지났어요. 다시 로그인해 주세요.'); err.code = 'AUTH'; throw err; }
+      throw new Error(`서버 응답을 읽지 못했어요 (HTTP ${res.status})`);
+    }
+    if (res.status === 401 && !(data && data.ok)) { const err = new Error('로그인 시간이 지났어요. 다시 로그인해 주세요.'); err.code = 'AUTH'; throw err; }
+    if (!res.ok && !(data && data.error)) throw new Error(`HTTP ${res.status}`);
+    if (data && data.code === 'AUTH') { const err = new Error(data.error || '다시 로그인해 주세요'); err.code = 'AUTH'; throw err; }
+    if (!data || !data.ok || !data.spec) throw new Error((data && data.error) || '설계도가 비어 있어요');
+    if (data.usage) console.log('[designer] 사용량', data.model, data.usage);
+    return data.spec;
+  } catch (e) {
+    if (e && e.name === 'AbortError') {
+      if (stopSignal && stopSignal.aborted) { const ce = new Error('멈췄어요'); ce.code = 'CANCEL'; throw ce; }
+      throw new Error('시간이 너무 오래 걸려 멈췄어요. 다시 시도해 주세요.');
+    }
+    throw e;
+  } finally { clearTimeout(timer); }
+}
+
+function DesignerStudio({ onExit, imagePool, setImagePool, showToast }) {
+  const [topic, setTopic] = useState(() => dsLs('ds_topic', ''));
+  const [mood, setMood] = useState('');
+  const [length, setLength] = useState(30);
+  const [spec, setSpec] = useState(() => {
+    // 지난번 작업 불러오기 — 망가진 값이면 버림
+    try {
+      const saved = dsLs('ds_last_spec', null);
+      if (!saved) return null;
+      // 새로고침하면 사진 목록이 비어 있으니, 사진 번호는 건드리지 않음(99) — 사진을 다시 넣으면 그대로 보임
+      const n = dsNormalizeSpec(saved, null, 99);
+      return n.scenes.length ? n : null;
+    } catch (e) { return null; }
+  });
+  const [undo, setUndo] = useState([]);
+  const [busy, setBusy] = useState(null); // { label, since }
+  const [busySec, setBusySec] = useState(0);
+  const [playing, setPlaying] = useState(false);
+  const [t, setT] = useState(0);
+  const [center, setCenter] = useState(() => {
+    const saved = dsLs('ds_center', {}) || {};
+    if (saved.programs === 'ABA 개별수업, ABA 조기교실, SCERTS 짝수업, 언어치료') saved.programs = DS_DEFAULT_CENTER.programs; // 예전 기본값 → 학교준비반 추가
+    return { ...DS_DEFAULT_CENTER, ...saved };
+  });
+  const [centerOpen, setCenterOpen] = useState(false);
+  const [aiReview, setAiReview] = useState(() => dsLs('ds_ai_review', true));
+  const [editText, setEditText] = useState('');
+  const [editScope, setEditScope] = useState('scene');
+  const [textEditOpen, setTextEditOpen] = useState(false);
+  const [thumbs, setThumbs] = useState([]);
+  const [fontTick, setFontTick] = useState(0);
+  const [assets, setAssets] = useState({ photos: {} });
+  const [exportPct, setExportPct] = useState(null);
+  const canvasRef = useRef(null);
+  const rafRef = useRef(null);
+  const playRef = useRef({ start: 0, from: 0 });
+  const fileRef = useRef(null);
+  const stopRef = useRef(null);       // AI 작업 멈추기
+  const exportStopRef = useRef(false); // 영상 저장 멈추기
+  const textUndoRef = useRef(false);  // 글자 직접 고치기: 고치기 시작할 때 한 번만 되돌리기 지점 저장
+  // ✋ 손으로 고치기: 미리보기에서 요소를 눌러 고르고 → 버튼으로 옮기기·크기, 또는 끌어서 옮기기
+  const [handEdit, setHandEdit] = useState(false);
+  const [selEl, setSelEl] = useState(-1);          // 지금 장면에서 고른 요소 번호
+  const dragRef = useRef(null);                     // 끌기 중 정보
+  const handUndoRef = useRef({ key: '', time: 0 }); // 연달아 누른 버튼은 되돌리기 한 번으로 묶기
+  useEffect(() => () => { try { stopRef.current && stopRef.current.abort(); } catch (e) {} exportStopRef.current = true; }, []); // 창을 나가면 하던 일 멈춤
+
+  useEffect(() => { dsLoadFontCss(); }, []);
+  useEffect(() => { dsLsSet('ds_topic', topic); }, [topic]);
+  useEffect(() => { dsLsSet('ds_center', center); }, [center]);
+  useEffect(() => { dsLsSet('ds_ai_review', aiReview); }, [aiReview]);
+  useEffect(() => {
+    if (!spec) return;
+    const id = setTimeout(() => dsLsSet('ds_last_spec', spec), 600);
+    return () => clearTimeout(id);
+  }, [spec]);
+
+  // 바쁠 때 몇 초째인지 표시
+  useEffect(() => {
+    if (!busy) { setBusySec(0); return; }
+    const id = setInterval(() => setBusySec(Math.round((Date.now() - busy.since) / 1000)), 500);
+    return () => clearInterval(id);
+  }, [busy]);
+
+  // 사진 → 그림 객체
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const photos = {};
+      await Promise.all((imagePool || []).map((src, i) => new Promise(res => {
+        const im = new Image();
+        im.onload = () => { photos['photo' + (i + 1)] = im; res(); };
+        im.onerror = () => res();
+        im.src = src;
+      })));
+      if (alive) setAssets({ photos });
+    })();
+    return () => { alive = false; };
+  }, [imagePool]);
+
+  // 설계도가 바뀌면 글꼴 불러오고 → 다시 그리기 + 장면 미리보기 만들기
+  // (글자를 직접 고칠 때 한 글자마다 다시 하지 않도록 잠깐 기다렸다가 실행)
+  useEffect(() => {
+    if (!spec) return;
+    let alive = true;
+    const timer = setTimeout(async () => {
+      await dsEnsureFonts(spec);
+      if (!alive) return;
+      setFontTick(x => x + 1);
+      try {
+        setThumbs(spec.scenes.map((_, i) => dsSceneSnapshot(spec, i, assets, 120).toDataURL('image/jpeg', 0.7)));
+      } catch (e) { setThumbs([]); }
+    }, 350);
+    return () => { alive = false; clearTimeout(timer); };
+  }, [spec, assets]);
+
+  // 글꼴이 늦게 도착하면 글자 배치를 다시 재기
+  useEffect(() => {
+    if (!document.fonts || !document.fonts.addEventListener) return;
+    const onDone = () => { dsTextCache.clear(); setFontTick(x => x + 1); };
+    document.fonts.addEventListener('loadingdone', onDone);
+    return () => document.fonts.removeEventListener('loadingdone', onDone);
+  }, []);
+
+  const total = spec ? dsSceneTimes(spec).total : 0;
+  const curScene = spec ? dsSceneAt(spec, Math.min(t, Math.max(0, total - 0.01))).i : 0;
+
+  // 그리기
+  useEffect(() => {
+    const c = canvasRef.current;
+    if (!c) return;
+    const ctx = c.getContext('2d');
+    if (!spec) { ctx.fillStyle = '#f6f2f4'; ctx.fillRect(0, 0, c.width, c.height); return; }
+    if (handEdit && spec.scenes[curScene]) {
+      const sx = c.width / DS_W, sy = c.height / DS_H;
+      ctx.save();
+      ctx.setTransform(sx, 0, 0, sy, 0, 0);
+      dsRenderScene(ctx, spec, curScene, dsSceneBestTime(spec, curScene), assets);
+      // 인스타 버튼에 가려지는 아래쪽 자리 표시
+      ctx.fillStyle = 'rgba(212,114,138,0.10)'; ctx.fillRect(0, DS_H - 330, DS_W, 330);
+      ctx.setLineDash([10, 10]); ctx.strokeStyle = 'rgba(212,114,138,0.55)'; ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.moveTo(0, DS_H - 330); ctx.lineTo(DS_W, DS_H - 330); ctx.stroke(); ctx.setLineDash([]);
+      const el = (spec.scenes[curScene].els || [])[selEl];
+      if (el) {
+        const b = dsElBox(ctx, el, spec);
+        ctx.strokeStyle = '#D4728A'; ctx.lineWidth = 6; ctx.setLineDash([18, 10]);
+        ctx.strokeRect(b.x - 10, b.y - 10, b.w + 20, b.h + 20);
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+      return;
+    }
+    dsRenderAt(ctx, spec, Math.min(t, Math.max(0, total - 0.001)), assets);
+  }, [t, spec, assets, fontTick, total, handEdit, selEl, curScene]);
+
+  // 장면이 바뀌거나 손으로 고치기를 끄면 고른 것 풀기
+  useEffect(() => { setSelEl(-1); }, [curScene, handEdit]);
+
+  // ── 손으로 고치기 도구 ──
+  function handPushUndo(key) {
+    const now = Date.now();
+    const h = handUndoRef.current;
+    if (h.key === key && now - h.time < 1500) { h.time = now; return; } // 같은 요소를 연달아 고치면 한 번으로
+    handUndoRef.current = { key, time: now };
+    setUndo(u => [spec, ...u].slice(0, 30));
+  }
+  function handUpdate(mut, undoKey) {
+    if (!spec || selEl < 0 || !spec.scenes[curScene]) return;
+    if (undoKey !== false) handPushUndo('el' + curScene + ':' + selEl + ':' + (undoKey || ''));
+    const next = JSON.parse(JSON.stringify(spec));
+    const el = next.scenes[curScene].els[selEl];
+    if (!el) return;
+    mut(el);
+    ['x', 'y', 'x2', 'y2'].forEach(k => { if (el[k] != null) el[k] = Math.round(dsClamp(Number(el[k]) || 0, -600, 2600)); });
+    setSpec(next);
+  }
+  // 선·화살표 끝점: 그릴 때처럼 비어 있으면 시작점과 같은 값으로 봄
+  const lineEnd = (el) => ({ x2: Number(el.x2) || Number(el.x) || 0, y2: Number(el.y2) || Number(el.y) || 0 });
+  function moveElBy(el, dx, dy) {
+    if (el.type === 'line' || el.type === 'arrow') { const e2 = lineEnd(el); el.x2 = e2.x2 + dx; el.y2 = e2.y2 + dy; }
+    el.x = (Number(el.x) || 0) + dx; el.y = (Number(el.y) || 0) + dy;
+  }
+  function handMove(dx, dy) {
+    handUpdate(el => moveElBy(el, dx, dy), 'move');
+  }
+  function handScale(k) {
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext('2d');
+    handUpdate(el => {
+      const b = dsElBox(ctx, el, spec);
+      const cx = b.x + b.w / 2, cy = b.y + b.h / 2;
+      if (el.type === 'text' || el.type === 'pill' || el.type === 'emoji') {
+        el.size = Math.round(dsClamp((Number(el.size) || (el.type === 'emoji' ? 120 : el.type === 'pill' ? 40 : 56)) * k, 14, 400));
+        if (el.type === 'text' && Number(el.h) > 0) el.h = Math.round(Number(el.h) * k); // 높이를 정해 둔 글자는 높이도 같이
+        if (el.type === 'pill') { if (Number(el.w) > 0) el.w = Math.round(Number(el.w) * k); if (Number(el.h) > 0) el.h = Math.round(Number(el.h) * k); if (Number(el.padX) > 0) el.padX = Math.round(Number(el.padX) * k); }
+        // 가운데를 기준으로 커지고 작아지게 (오른쪽 아래로 밀려나지 않게)
+        const b1 = dsElBox(ctx, el, spec);
+        el.x = Math.round((Number(el.x) || 0) + (cx - (b1.x + b1.w / 2)));
+        el.y = Math.round((Number(el.y) || 0) + (cy - (b1.y + b1.h / 2)));
+      } else if (el.type === 'line' || el.type === 'arrow') {
+        const x1 = Number(el.x) || 0, y1 = Number(el.y) || 0, x2 = lineEnd(el).x2, y2 = lineEnd(el).y2;
+        const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
+        el.x = mx + (x1 - mx) * k; el.y = my + (y1 - my) * k; el.x2 = mx + (x2 - mx) * k; el.y2 = my + (y2 - my) * k;
+      } else {
+        const w = Math.max(10, (Number(el.w) || b.w) * k), h = el.type === 'ring' ? w : Math.max(10, (Number(el.h) || Number(el.w) || b.h) * k);
+        el.w = Math.round(w); if (el.type !== 'ring' || el.h != null) el.h = Math.round(h); // 도넛은 항상 정원
+        el.x = Math.round(cx - w / 2); el.y = Math.round(cy - h / 2);
+      }
+    }, 'size');
+  }
+  function handWidth(k) {
+    handUpdate(el => {
+      if (el.type !== 'text') return;
+      const w0 = Math.max(40, Number(el.w) || (DS_W - 2 * (Number(el.x) || 90))); // 그릴 때와 같은 폭
+      const w = Math.round(dsClamp(w0 * k, 80, 1400));
+      if (el.align === 'center') el.x = Math.round((Number(el.x) || 0) - (w - w0) / 2);
+      else if (el.align === 'right') el.x = Math.round((Number(el.x) || 0) - (w - w0));
+      el.w = w;
+    }, 'width');
+  }
+  function handCenter() {
+    const c = canvasRef.current; if (!c) return;
+    const ctx = c.getContext('2d');
+    handUpdate(el => {
+      if (el.type === 'text') {
+        // 글자는 각 줄을 가운데 정렬하고, 글 상자도 화면 가운데로
+        const w = Math.max(40, Number(el.w) || (DS_W - 2 * (Number(el.x) || 90)));
+        el.w = Math.round(Math.min(w, DS_W - 80)); el.align = 'center';
+        el.x = Math.round((DS_W - el.w) / 2);
+        return;
+      }
+      const b = dsElBox(ctx, el, spec);
+      moveElBy(el, Math.round(DS_W / 2 - (b.x + b.w / 2)), 0);
+    }, 'center');
+  }
+  function handLayer(dir) {
+    if (!spec || selEl < 0) return;
+    const els = spec.scenes[curScene].els;
+    const j = selEl + dir;
+    if (j < 0 || j >= els.length) return;
+    handPushUndo('layer' + Date.now()); handUndoRef.current = { key: '', time: 0 };
+    const next = JSON.parse(JSON.stringify(spec));
+    const arr = next.scenes[curScene].els; const tmp = arr[selEl]; arr[selEl] = arr[j]; arr[j] = tmp;
+    setSpec(next); setSelEl(j);
+  }
+  function handDelete() {
+    if (!spec || selEl < 0) return;
+    handPushUndo('del' + Date.now()); handUndoRef.current = { key: '', time: 0 };
+    const next = JSON.parse(JSON.stringify(spec));
+    next.scenes[curScene].els.splice(selEl, 1);
+    setSpec(next); setSelEl(-1);
+  }
+  // 화면 좌표 → 설계도 좌표
+  function canvasPoint(e) {
+    const c = canvasRef.current; const r = c.getBoundingClientRect();
+    return { x: (e.clientX - r.left) * DS_W / r.width, y: (e.clientY - r.top) * DS_H / r.height };
+  }
+  // 누른 자리에서 맨 위에 보이는 요소 찾기 (작은 것 우선: 큰 배경 카드보다 그 위 글자가 잘 잡히게)
+  function hitTest(pt) {
+    const c = canvasRef.current; if (!c || !spec || !spec.scenes[curScene]) return -1;
+    const ctx = c.getContext('2d');
+    const els = spec.scenes[curScene].els || [];
+    const tt = dsSceneBestTime(spec, curScene);
+    let best = -1, bestArea = Infinity;
+    for (let k = els.length - 1; k >= 0; k--) {
+      const el = els[k]; if (!el) continue;
+      let vis = 1; try { const a = dsAnimState(el, tt); vis = a.a * (el.opacity == null ? 1 : Number(el.opacity)); } catch (e) {}
+      if (vis < 0.05) continue;
+      const b = dsElBox(ctx, el, spec);
+      const pad = 18;
+      if (pt.x >= b.x - pad && pt.x <= b.x + b.w + pad && pt.y >= b.y - pad && pt.y <= b.y + b.h + pad) {
+        const area = Math.max(1, b.w * b.h);
+        if (el.type === 'pattern') continue;               // 무늬는 고르지 않음
+        if (area > DS_W * DS_H * 0.8 && best >= 0) continue; // 화면 가득한 배경 요소는 다른 게 있으면 건너뜀
+        if (area < bestArea * 0.98) { best = k; bestArea = area; }
+      }
+    }
+    return best;
+  }
+  function onCanvasDown(e) {
+    if (!handEdit || busy) return;
+    const pt = canvasPoint(e);
+    const k = hitTest(pt);
+    setSelEl(k);
+    if (k >= 0) {
+      const el = spec.scenes[curScene].els[k];
+      const r = e.currentTarget.getBoundingClientRect();
+      dragRef.current = { k, sx: pt.x, sy: pt.y, x: Number(el.x) || 0, y: Number(el.y) || 0, x2: lineEnd(el).x2, y2: lineEnd(el).y2, moved: false, base: spec,
+        thr: 8 * DS_W / Math.max(1, r.width) }; // 손가락이 8칸(화면 기준) 넘게 움직여야 끌기로 봄 → 살짝 눌러 고를 때 안 밀림
+      try { e.currentTarget.setPointerCapture(e.pointerId); } catch (er) {}
+    }
+  }
+  function onCanvasMove(e) {
+    const d = dragRef.current; if (!d || !handEdit) return;
+    const pt = canvasPoint(e);
+    const dx = Math.round(pt.x - d.sx), dy = Math.round(pt.y - d.sy);
+    if (!d.moved && Math.hypot(dx, dy) < d.thr) return; // 살짝 누른 건 끌기로 안 봄
+    if (!d.moved) { d.moved = true; setUndo(u => [d.base, ...u].slice(0, 30)); handUndoRef.current = { key: '', time: 0 }; }
+    const next = JSON.parse(JSON.stringify(d.base));
+    const el = next.scenes[curScene].els[d.k]; if (!el) return;
+    el.x = d.x + dx; el.y = d.y + dy;
+    if (el.type === 'line' || el.type === 'arrow') { el.x2 = d.x2 + dx; el.y2 = d.y2 + dy; }
+    setSpec(next);
+  }
+  function onCanvasUp() { dragRef.current = null; }
+
+  // 재생
+  useEffect(() => {
+    if (!playing) { cancelAnimationFrame(rafRef.current); return; }
+    playRef.current = { start: performance.now(), from: t >= total - 0.05 ? 0 : t };
+    const loop = () => {
+      const now = (performance.now() - playRef.current.start) / 1000 + playRef.current.from;
+      if (now >= total) { setT(total); setPlaying(false); return; }
+      setT(now);
+      rafRef.current = requestAnimationFrame(loop);
+    };
+    rafRef.current = requestAnimationFrame(loop);
+    return () => cancelAnimationFrame(rafRef.current);
+    // eslint-disable-next-line
+  }, [playing]);
+
+  const sceneStart = (i) => (spec ? dsSceneTimes(spec).starts[i] || 0 : 0);
+  const jumpScene = (i) => { setPlaying(false); const d = spec.scenes[i].dur; setT(sceneStart(i) + Math.max(0, d - 0.05)); };
+
+  // 사진을 지우면 뒤 사진 번호가 하나씩 당겨지므로, 디자인 속 사진 번호도 같이 맞춰 줌
+  // (지운 사진을 쓰던 자리는 사진 칸만 빠지고 나머지 디자인은 그대로)
+  function removePhoto(i) {
+    const n = i + 1;
+    let used = 0;
+    if (spec) spec.scenes.forEach(sc => (sc.els || []).forEach(el => { if (el && el.type === 'image' && el.src === 'photo' + n) used++; }));
+    if (used) {
+      let ok = true;
+      try { ok = window.confirm(`${n}번 사진은 지금 디자인 ${used}곳에 들어가 있어요.\n지우면 그 사진 칸도 함께 빠져요. 지울까요?`); } catch (e) {}
+      if (!ok) return;
+    }
+    setImagePool((imagePool || []).filter((_, k) => k !== i));
+    setSelEl(-1);
+    const fix = (sp) => {
+      if (!sp || !Array.isArray(sp.scenes)) return sp;
+      return { ...sp, scenes: sp.scenes.map(sc => (!sc || !Array.isArray(sc.els)) ? sc : ({ ...sc, els: sc.els.filter(el => {
+        if (!el || el.type !== 'image') return true;
+        const m = /^photo(\d+)$/.exec(String(el.src || ''));
+        return !(m && Number(m[1]) === n);
+      }).map(el => {
+        if (!el || el.type !== 'image') return el;
+        const m = /^photo(\d+)$/.exec(String(el.src || ''));
+        return (m && Number(m[1]) > n) ? { ...el, src: 'photo' + (Number(m[1]) - 1) } : el;
+      }) })) };
+    };
+    if (spec) setSpec(fix(spec));
+    setUndo(u => u.map(fix));
+  }
+  // 장면마다 글자만 모아 비교 (공백·강조 표시는 무시)
+  function sceneTexts(sp) {
+    return (sp && sp.scenes ? sp.scenes : []).map(sc => (sc.els || []).filter(el => el && (el.type === 'text' || el.type === 'pill')).map(el => String(el.text || '').replace(/\*\*/g, '').replace(/\s+/g, '')).join('|'));
+  }
+  function changedTextScenes(a, b) {
+    const ta = sceneTexts(a), tb = sceneTexts(b);
+    if (ta.length !== tb.length) return null; // 장면 수가 다름
+    const out = []; ta.forEach((x, i) => { if (x !== tb[i]) out.push(i + 1); });
+    return out;
+  }
+  function pushSpec(next) {
+    handUndoRef.current = { key: '', time: 0 }; setSelEl(-1);
+    if (spec) setUndo(u => [spec, ...u].slice(0, 30));
+    setSpec(next);
+  }
+  // ── 장면 직접 조정 (AI 안 씀) ──
+  function setSceneDur(i, delta) {
+    if (!spec || !spec.scenes[i]) return;
+    const d = Math.round(dsClamp((Number(spec.scenes[i].dur) || 4) + delta, 1.5, 15) * 10) / 10;
+    pushSpec({ ...spec, scenes: spec.scenes.map((sc, k) => (k === i ? { ...sc, dur: d } : sc)) });
+    setPlaying(false); setT(sceneStart(i) + Math.max(0, d - 0.05));
+  }
+  function moveScene(i, dir) {
+    if (!spec) return;
+    const j = i + dir;
+    if (j < 0 || j >= spec.scenes.length) return;
+    const arr = spec.scenes.slice(); const tmp = arr[i]; arr[i] = arr[j]; arr[j] = tmp;
+    const next = { ...spec, scenes: arr };
+    pushSpec(next);
+    setPlaying(false); setT((dsSceneTimes(next).starts[j] || 0) + Math.max(0, (Number(arr[j].dur) || 4) - 0.05));
+  }
+  function deleteScene(i) {
+    if (!spec || spec.scenes.length <= 1) return;
+    let ok = true;
+    try { ok = window.confirm(`${i + 1}번 장면을 지울까요? (↩ 되돌리기로 되살릴 수 있어요)`); } catch (e) {}
+    if (!ok) return;
+    const next = { ...spec, scenes: spec.scenes.filter((_, k) => k !== i) };
+    pushSpec(next);
+    const j = Math.min(i, next.scenes.length - 1);
+    setPlaying(false); setT((dsSceneTimes(next).starts[j] || 0) + Math.max(0, (Number(next.scenes[j].dur) || 4) - 0.05));
+  }
+  function doUndo() {
+    if (!undo.length) return;
+    const prev = undo[0];
+    setSpec(prev); setUndo(u => u.slice(1)); setPlaying(false);
+    handUndoRef.current = { key: '', time: 0 }; setSelEl(-1);
+    if (handEdit) { // 손으로 고치는 중이면 보던 장면 번호 그대로 (장면 길이가 달라져도)
+      const idx = Math.max(0, Math.min(curScene, prev.scenes.length - 1));
+      setT((dsSceneTimes(prev).starts[idx] || 0) + Math.max(0, (Number(prev.scenes[idx].dur) || 4) - 0.05));
+      return;
+    }
+    setT(prev && prev.scenes && prev.scenes[0] ? Math.max(0, (Number(prev.scenes[0].dur) || 4) - 0.05) : 0); // 첫 장면 다 나타난 모습
+  }
+
+  async function photoPayload() {
+    const out = [];
+    for (const src of (imagePool || []).slice(0, 6)) {
+      const data = await dsShrinkDataUrl(src, 384);
+      out.push({ data: data || null, mediaType: 'image/jpeg' }); // 실패해도 자리는 유지 → 사진 번호가 안 밀림
+    }
+    return out;
+  }
+  function pickDirection() {
+    const recent = dsLs('ds_design_history', []).join(' ');
+    const pool = DS_DIRECTIONS.filter(d => !recent.includes(d.split(' (')[0]));
+    const arr = pool.length ? pool : DS_DIRECTIONS;
+    return arr[Math.floor(Math.random() * arr.length)];
+  }
+  function rememberDesign(s) {
+    const h = dsLs('ds_design_history', []);
+    dsLsSet('ds_design_history', [dsDescribeStyle(s), ...h].slice(0, 8));
+  }
+
+  // AI가 만든 설계도를 실제로 그려 보고 → AI에게 다시 보여 주며 다듬기
+  async function reviewPass(s) {
+    setBusy({ label: 'AI가 완성 화면을 보면서 다듬는 중', since: Date.now(), stoppable: true });
+    try {
+      await dsEnsureFonts(s);
+      const shots = s.scenes.map((_, i) => ({ data: dsSceneSnapshot(s, i, assets, 360).toDataURL('image/jpeg', 0.75).split(',')[1], mediaType: 'image/jpeg' }));
+      const raw = await dsCallDesigner({ action: 'review', spec: s, shots, center, length, photoCount: (imagePool || []).length }, stopRef.current && stopRef.current.signal);
+      const fixed = dsNormalizeSpec(raw, center, (imagePool || []).length);
+      if (!fixed.scenes.length) return s; // 검사 결과가 비어 있으면 원래 디자인 유지
+      // 검사는 겹침·잘림만 고치는 일 → 장면 수가 달라졌으면 검사 결과는 버림
+      if (fixed.scenes.length !== s.scenes.length) { showToast('AI 검사가 장면 수를 바꿔서, 검사 전 디자인을 그대로 보여 드려요', 'info', 4500); return s; }
+      const ch = changedTextScenes(s, fixed);
+      if (ch && ch.length) showToast(`AI 검사에서 ${ch.join('·')}번 장면 글자가 조금 바뀌었어요 — 꼭 읽어 보세요`, 'warning', 6000);
+      return fixed;
+    } catch (e) {
+      if (e && e.code === 'CANCEL') showToast('AI 검사를 멈췄어요 — 검사 전 디자인을 보여 드려요', 'info', 4000);
+      else showToast('AI 검사는 건너뛰었어요 (' + (e.message || '오류') + ') — 만든 디자인은 그대로 보여 드려요', 'warning', 5000);
+      return s;
+    }
+  }
+
+  async function runAI(action, extra = {}) {
+    if (busy) return;
+    if ((action === 'create' || action === 'recontent') && !topic.trim()) {
+      showToast('주제나 하고 싶은 말을 먼저 적어 주세요', 'warning', 3000); return;
+    }
+    if (action !== 'create' && spec && photoNeed > (imagePool || []).length) {
+      let ok = true;
+      try { ok = window.confirm(`이 디자인의 사진 ${photoNeed}장 중 ${photoNeed - (imagePool || []).length}장이 비어 있어요.\n이대로 AI에게 보내면 빈 사진 칸이 빠질 수 있어요. 그래도 진행할까요?\n(취소를 누르고 사진을 먼저 넣으면 그대로 살아나요)`); } catch (e) {}
+      if (!ok) return;
+    }
+    setPlaying(false);
+    if (handEdit) setHandEdit(false); // AI가 새로 그리면 손으로 고치기는 끝냄
+    const labels = { create: 'AI가 새 디자인을 그리는 중', redesign: 'AI가 완전히 다른 디자인을 그리는 중', recontent: 'AI가 같은 디자인에 새 내용을 넣는 중', edit: 'AI가 요청대로 고치는 중' };
+    setBusy({ label: labels[action] || 'AI 작업 중', since: Date.now(), stoppable: true });
+    stopRef.current = new AbortController();
+    try {
+      const photos = await photoPayload();
+      const payload = {
+        action, center, length, mood, topic,
+        photos,
+        avoid: dsLs('ds_design_history', []),
+        direction: (action === 'create' || action === 'redesign') ? pickDirection() : '',
+        spec: action === 'create' ? undefined : spec,
+        ...extra,
+      };
+      const raw = await dsCallDesigner(payload, stopRef.current.signal);
+      let next = dsNormalizeSpec(raw, center, (imagePool || []).length);
+      if (!next.scenes.length) throw new Error('장면이 하나도 없어요');
+      // 한 장면만 고치기: AI가 돌려준 것 중 그 장면만 가져와 끼움 → 다른 장면(직접 고친 글자 포함)은 절대 안 바뀜
+      const sIdx = action === 'edit' && extra.sceneIndex >= 0 ? extra.sceneIndex : -1;
+      if (sIdx >= 0 && spec) {
+        if (next.scenes.length !== spec.scenes.length || !next.scenes[sIdx]) throw new Error('AI가 장면 수를 바꿔 버려서 적용하지 않았어요. 한 번 더 눌러 주세요');
+        next = { ...spec, scenes: spec.scenes.map((sc, i) => (i === sIdx ? next.scenes[sIdx] : sc)) };
+      }
+      // 다른 디자인으로: 글은 그대로여야 함 → 바뀐 장면이 있으면 알려 줌
+      if (action === 'redesign' && spec) {
+        const ch = changedTextScenes(spec, next);
+        if (ch === null) showToast('새 디자인에서 장면 수가 달라졌어요 — 글 내용을 꼭 확인해 주세요', 'warning', 6000);
+        else if (ch.length) showToast(`${ch.join('·')}번 장면 글자가 조금 바뀌었어요 — 꼭 읽어 보세요`, 'warning', 6000);
+      }
+      if (aiReview && action !== 'edit') next = await reviewPass(next);
+      pushSpec(next);
+      if (action === 'create' || action === 'redesign') rememberDesign(next);
+      if (action === 'edit' && extra.sceneIndex >= 0) jumpSceneOf(next, extra.sceneIndex);
+      else { setT(0); setTimeout(() => setPlaying(true), 350); }
+      showToast(`✅ ${next.style && next.style.name ? `"${next.style.name}" ` : ''}완성! 게시 전에 글 내용을 꼭 확인해 주세요`, 'success', 4500);
+    } catch (e) {
+      if (!(e && e.code === 'CANCEL')) console.error('[designer]', e);
+      if (e && e.code === 'CANCEL') showToast('멈췄어요 — 지금 디자인은 그대로예요', 'info', 3000);
+      else if (e && e.code === 'AUTH') showToast(e.message + ' (화면은 그대로 두고 로그인 창만 떠요 — 만들던 것은 사라지지 않아요)', 'warning', 12000, { label: '다시 로그인', onClick: reelsRelogin });
+      else showToast('만들기 실패: ' + (e.message || '알 수 없는 오류'), 'error', 7000);
+    } finally {
+      setBusy(null);
+      stopRef.current = null;
+    }
+  }
+  function jumpSceneOf(s, i) {
+    const st = dsSceneTimes(s).starts[i] || 0;
+    setT(st); setTimeout(() => setPlaying(true), 300);
+  }
+
+  async function exportMp4() {
+    if (!spec || busy) return;
+    setPlaying(false);
+    setBusy({ label: '영상 파일 만드는 중', since: Date.now(), stoppable: true, isExport: true });
+    setExportPct(0);
+    exportStopRef.current = false;
+    try {
+      const blob = await dsExportMp4(spec, assets, (p) => setExportPct(Math.round(p * 100)), () => exportStopRef.current);
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob); a.download = `geomdanABA_reels_${dsStamp()}.mp4`; // 한글 파일 이름은 일부 브라우저에서 'download'로 바뀌어 영문으로
+      document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(a.href), 60000); // 아이폰은 저장 화면이 늦게 떠서 넉넉히
+      showToast('✅ mp4 저장 완료 — 휴대폰은 \'파일\' 앱(다운로드)에 저장돼요. 소리는 없으니 인스타에서 음악을 넣어 주세요', 'success', 7000);
+    } catch (e) {
+      if (e && e.code === 'CANCEL') showToast('영상 저장을 멈췄어요', 'info', 3000);
+      else if (e && e.message === 'NO_ENCODER') showToast('이 브라우저는 영상 만들기를 지원하지 않아요. 크롬·엣지·최신 사파리에서 해 주세요.', 'warning', 7000);
+      else showToast('영상 만들기 실패: ' + (e.message || ''), 'error', 6000);
+    } finally { setBusy(null); setExportPct(null); }
+  }
+  async function exportPngs(all) {
+    if (!spec || busy) return;
+    setPlaying(false);
+    setBusy({ label: '이미지 저장 중', since: Date.now() });
+    try {
+      await dsEnsureFonts(spec);
+      const list = all ? spec.scenes.map((_, i) => i) : [curScene];
+      const stamp = dsStamp();
+      for (const i of list) {
+        const c = dsSceneSnapshot(spec, i, assets, DS_W);
+        const blob = await new Promise(r => c.toBlob(r, 'image/png'));
+        c.width = 0; c.height = 0;
+        if (!blob) throw new Error('이미지를 만들지 못했어요');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob); a.download = `geomdanABA_reels_${stamp}_${String(i + 1).padStart(2, '0')}.png`;
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(a.href), 60000);
+        await new Promise(r => setTimeout(r, 300));
+      }
+      showToast(all ? `✅ ${list.length}장 저장` : `✅ ${curScene + 1}번 장면 저장`, 'success', 3000);
+    } catch (e) {
+      showToast('이미지 저장 실패: ' + (e.message || ''), 'error', 5000);
+    } finally { setBusy(null); }
+  }
+
+  function setElText(sceneIdx, elIdx, text) {
+    if (!textUndoRef.current) { textUndoRef.current = true; setUndo(u => [spec, ...u].slice(0, 30)); } // 고치기 시작 전 모습 저장 → ↩ 되돌리기로 돌아갈 수 있음
+    const next = JSON.parse(JSON.stringify(spec));
+    next.scenes[sceneIdx].els[elIdx].text = text;
+    setSpec(next);
+  }
+
+  function onPickPhotos(e) {
+    const files = Array.from(e.target.files || []).slice(0, 12);
+    Promise.all(files.map(f => new Promise(res => {
+      const r = new FileReader();
+      r.onload = () => res(reelsShrinkDataUrl(r.result, f.type));
+      r.onerror = () => res(null);
+      r.readAsDataURL(f);
+    }))).then(list => {
+      // 사진 목록은 자르지 않음 (AI에게는 앞의 6장까지만 보여 줌)
+      setImagePool(prev => [...(prev || []), ...list.filter(Boolean)]);
+      if (fileRef.current) fileRef.current.value = '';
+    });
+  }
+
+  // ── 스타일 조각 ──
+  const card = { background: '#fff', borderRadius: 14, border: '1px solid #f0dde3', padding: 16, boxShadow: '0 4px 16px rgba(212,114,138,0.06)' };
+  const label = { fontSize: 12, fontWeight: 800, color: PKD, marginBottom: 6, display: 'block' };
+  const input = { width: '100%', boxSizing: 'border-box', padding: '10px 12px', borderRadius: 10, border: '1px solid #ead5db', fontSize: 14, fontFamily: 'inherit', outline: 'none', background: '#fff' };
+  const chip = (on) => ({ padding: '6px 11px', borderRadius: 999, border: `1px solid ${on ? PKD : '#ead5db'}`, background: on ? PKD : '#fff', color: on ? '#fff' : INK_SOFT, fontSize: 12, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' });
+  const bigBtn = (bg, dis) => ({ width: '100%', padding: '13px 14px', borderRadius: 12, border: 'none', background: dis ? '#ddd' : bg, color: '#fff', fontSize: 14.5, fontWeight: 800, cursor: dis ? 'not-allowed' : 'pointer', fontFamily: 'inherit' });
+  const midBtn = (dis) => ({ flex: '1 1 auto', padding: '10px 12px', borderRadius: 10, border: `1px solid ${PK}`, background: '#fff', color: PKD, fontSize: 12.5, fontWeight: 800, cursor: dis ? 'not-allowed' : 'pointer', fontFamily: 'inherit', opacity: dis ? 0.5 : 1 });
+  const dis = !!busy;
+  const curEls = spec && spec.scenes[curScene] ? spec.scenes[curScene].els : [];
+  // 디자인에 필요한 사진 수 (가장 큰 사진 번호)
+  let photoNeed = 0;
+  if (spec) spec.scenes.forEach(sc => (sc.els || []).forEach(el => { const m = el && el.type === 'image' ? /^photo(\d+)$/.exec(String(el.src || '')) : null; if (m) photoNeed = Math.max(photoNeed, Number(m[1])); }));
+
+  return (
+    <div style={{ fontFamily: "'Pretendard','Noto Sans KR',sans-serif", background: 'linear-gradient(135deg,#fdf8f9 0%,#fff 50%,#fdf8f9 100%)', minHeight: '100vh', padding: 16, boxSizing: 'border-box', color: INK }}>
+      <style>{`
+        .ds-grid { display: grid; grid-template-columns: minmax(300px, 420px) 1fr; gap: 20px; max-width: 1100px; margin: 0 auto; align-items: start; }
+        @media (max-width: 820px) { .ds-grid { grid-template-columns: 1fr; } }
+        @keyframes dsSpin { to { transform: rotate(360deg); } }
+      `}</style>
+
+      {/* 머리 */}
+      <div style={{ maxWidth: 1100, margin: '0 auto 16px', display: 'flex', alignItems: 'center', gap: 12, flexWrap: 'wrap' }}>
+        <div style={{ flex: 1, minWidth: 220 }}>
+          <div style={{ fontSize: 11, letterSpacing: 2, color: PKD, fontWeight: 800 }}>DESIGNER MODE</div>
+          <div style={{ fontSize: 22, fontWeight: 900 }}>🎨 디자이너 모드</div>
+          <div style={{ fontSize: 12, color: INK_MUTE, marginTop: 2 }}>AI가 색·글꼴·구성·움직임을 매번 새로 디자인해요</div>
+        </div>
+        <button onClick={onExit} disabled={dis} style={{ ...midBtn(dis), flex: '0 0 auto' }}>← 빠른 모드로</button>
+      </div>
+
+      <div className="ds-grid">
+        {/* ── 왼쪽: 입력 ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 14 }}>
+          <div style={card}>
+            <span style={label}>주제 · 하고 싶은 말</span>
+            <textarea value={topic} onChange={(e) => setTopic(e.target.value)} rows={4} disabled={dis}
+              placeholder={'예) 처음 상담 오시는 부모님께 — 상담은 어떻게 진행되는지, 무엇을 준비하면 좋은지\n예) 우리 센터 ABA 개별수업 소개, 따뜻하게'}
+              style={{ ...input, resize: 'vertical', lineHeight: 1.5 }} />
+
+            <span style={{ ...label, marginTop: 12 }}>원하는 느낌 <span style={{ color: INK_MUTE, fontWeight: 500 }}>(비워 두면 AI가 알아서)</span></span>
+            <input value={mood} onChange={(e) => setMood(e.target.value)} disabled={dis} placeholder="예) 따뜻하게, 노란색, 손글씨 느낌" style={input} />
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 8 }}>
+              {DS_MOOD_CHIPS.map(m => (
+                <button key={m} disabled={dis} style={chip(mood.includes(m))}
+                  onClick={() => setMood(mood.includes(m) ? mood.replace(m, '').replace(/,\s*,/g, ',').replace(/^,\s*|,\s*$/g, '').trim() : (mood ? mood + ', ' + m : m))}>{m}</button>
+              ))}
+            </div>
+
+            <span style={{ ...label, marginTop: 12 }}>길이</span>
+            <div style={{ display: 'flex', gap: 6 }}>
+              {[15, 30, 45].map(n => <button key={n} disabled={dis} style={{ ...chip(length === n), flex: 1 }} onClick={() => setLength(n)}>{n}초</button>)}
+            </div>
+
+            <span style={{ ...label, marginTop: 12 }}>사진 <span style={{ color: INK_MUTE, fontWeight: 500 }}>(선택 · 처음엔 빠른 모드 사진을 가져와요 · AI는 앞의 6장까지 봐요)</span></span>
+            <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', alignItems: 'center' }}>
+              {(imagePool || []).map((src, i) => (
+                <div key={i} style={{ position: 'relative' }}>
+                  <img src={src} alt="" style={{ width: 52, height: 52, objectFit: 'cover', borderRadius: 8, border: '1px solid #eee' }} />
+                  <span style={{ position: 'absolute', left: 3, top: 2, fontSize: 9, fontWeight: 800, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.6)' }}>{i + 1}</span>
+                  <button disabled={dis} onClick={() => removePhoto(i)}
+                    style={{ position: 'absolute', right: -6, top: -6, width: 20, height: 20, borderRadius: 10, border: 'none', background: '#333', color: '#fff', fontSize: 11, cursor: 'pointer', lineHeight: '20px', padding: 0 }}>×</button>
+                </div>
+              ))}
+              <button disabled={dis} onClick={() => fileRef.current && fileRef.current.click()}
+                style={{ width: 52, height: 52, borderRadius: 8, border: `1px dashed ${PK}`, background: PKL, color: PKD, fontSize: 22, cursor: 'pointer' }}>+</button>
+              <input ref={fileRef} type="file" accept="image/*" multiple onChange={onPickPhotos} style={{ display: 'none' }} />
+            </div>
+
+            <label style={{ display: 'flex', gap: 8, alignItems: 'flex-start', marginTop: 14, fontSize: 12, color: INK_SOFT, lineHeight: 1.5, cursor: 'pointer' }}>
+              <input type="checkbox" checked={aiReview} onChange={(e) => setAiReview(e.target.checked)} disabled={dis} style={{ marginTop: 3, accentColor: PKD }} />
+              <span><b>AI 검사</b> — 다 만든 뒤 AI가 완성 화면을 직접 보고 겹침·잘림을 한 번 더 고쳐요 (시간과 비용이 조금 더 들어요)</span>
+            </label>
+
+            <button onClick={() => runAI('create')} disabled={dis} style={{ ...bigBtn(`linear-gradient(135deg, ${PKD}, ${PK})`, dis), marginTop: 14 }}>
+              ✨ {spec ? '새 주제로 새로 만들기' : '디자인 만들기'}
+            </button>
+            <div style={{ marginTop: 10, padding: '9px 11px', background: '#fff8e1', border: '1px solid #ffe08a', borderRadius: 8, fontSize: 11, color: '#7a5b00', lineHeight: 1.55 }}>
+              ⚠ <b>게시 전 확인 필수</b> — AI가 쓴 문장은 꼭 읽어 보고 올려 주세요. 센터 정보는 아래 <b>고정 정보</b>만 쓰도록 되어 있고, 전화번호는 앱이 자동으로 맞춰요.
+            </div>
+          </div>
+
+          {/* 고정 정보 */}
+          <div style={card}>
+            <button onClick={() => setCenterOpen(!centerOpen)} style={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center', background: 'none', border: 'none', padding: 0, cursor: 'pointer', fontFamily: 'inherit' }}>
+              <span style={{ ...label, marginBottom: 0 }}>🔒 센터 고정 정보 <span style={{ color: INK_MUTE, fontWeight: 500 }}>— AI가 바꾸지 못해요</span></span>
+              <span style={{ fontSize: 12, color: PKD, fontWeight: 700 }}>{centerOpen ? '접기 ▲' : '보기 ▼'}</span>
+            </button>
+            {centerOpen && (
+              <div style={{ marginTop: 10, display: 'flex', flexDirection: 'column', gap: 8 }}>
+                {[['name', '센터 이름'], ['phone', '상담 전화'], ['address', '주소'], ['creds', '자격 표기'], ['programs', '운영 프로그램'], ['sns', 'SNS'], ['extra', '기타 (운영시간 등, 비우면 AI가 안 씀)']].map(([k, l]) => (
+                  <div key={k}>
+                    <div style={{ fontSize: 11, color: INK_MUTE, marginBottom: 3 }}>{l}</div>
+                    <input value={center[k] || ''} onChange={(e) => setCenter({ ...center, [k]: e.target.value })} style={{ ...input, fontSize: 13, padding: '8px 10px' }} />
+                  </div>
+                ))}
+                <button onClick={() => setCenter({ ...DS_DEFAULT_CENTER })} style={{ ...midBtn(false), flex: '0 0 auto', alignSelf: 'flex-start', fontSize: 11, padding: '6px 10px' }}>기본값으로</button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ── 오른쪽: 미리보기 ── */}
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12, alignItems: 'center' }}>
+          <div style={{ position: handEdit ? 'sticky' : 'relative', top: handEdit ? 8 : undefined, zIndex: handEdit ? 5 : undefined, order: -2,
+            // 손으로 고치는 동안엔 미리보기를 화면 위에 붙여 둠 → 아래 버튼을 눌러도 바뀌는 모습이 계속 보임 (휴대폰은 조금 작게)
+            width: handEdit ? 'min(360px, 88vw, calc((100vh - 270px) * 9 / 16))' : 'min(360px, 88vw)',
+            aspectRatio: '9 / 16', borderRadius: 18, overflow: 'hidden', boxShadow: '0 14px 40px rgba(0,0,0,0.15)', background: '#f6f2f4' }}>
+            <canvas ref={canvasRef} width={540} height={960} onClick={() => spec && !busy && !handEdit && setPlaying(!playing)}
+              onPointerDown={onCanvasDown} onPointerMove={onCanvasMove} onPointerUp={onCanvasUp} onPointerCancel={onCanvasUp}
+              style={{ width: '100%', height: '100%', display: 'block', cursor: handEdit ? 'move' : (spec ? 'pointer' : 'default'), touchAction: handEdit ? 'none' : 'auto' }} />
+            {!spec && !busy && (
+              <div style={{ position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', textAlign: 'center', padding: 30, color: INK_MUTE, fontSize: 14, lineHeight: 1.7 }}>
+                왼쪽에 주제를 적고<br /><b style={{ color: PKD }}>✨ 디자인 만들기</b>를 눌러 주세요
+              </div>
+            )}
+            {busy && (
+              <div style={{ position: 'absolute', inset: 0, background: 'rgba(255,255,255,0.86)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 14, padding: 24, textAlign: 'center' }}>
+                <div style={{ width: 42, height: 42, borderRadius: 21, border: `4px solid ${PKL}`, borderTopColor: PKD, animation: 'dsSpin 0.9s linear infinite' }} />
+                <div style={{ fontSize: 14, fontWeight: 800, color: INK }}>{busy.label}</div>
+                <div style={{ fontSize: 12, color: INK_MUTE }}>
+                  {exportPct != null ? `${exportPct}%` : `${busySec}초 지났어요 · 보통 1~3분 걸려요`}
+                </div>
+                {busy.stoppable && (
+                  <button onClick={() => { if (busy.isExport) exportStopRef.current = true; else { try { stopRef.current && stopRef.current.abort(); } catch (e) {} } }}
+                    style={{ padding: '8px 20px', borderRadius: 10, border: '1px solid #ddd', background: '#fff', color: '#555', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>
+                    멈추기
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+
+          {spec && (
+            <>
+              {/* 재생 막대 */}
+              <div style={{ width: 'min(480px, 92vw)', display: handEdit ? 'none' : 'flex', alignItems: 'center', gap: 10 }}>
+                <button onClick={() => { if (handEdit) setHandEdit(false); setPlaying(!playing); }} disabled={dis}
+                  style={{ width: 40, height: 40, borderRadius: 20, border: 'none', background: INK, color: '#fff', fontSize: 15, cursor: 'pointer' }}>{playing ? '❚❚' : '▶'}</button>
+                <input type="range" min={0} max={total} step={0.01} value={Math.min(t, total)} disabled={dis}
+                  onChange={(e) => { setPlaying(false); setT(parseFloat(e.target.value)); }} style={{ flex: 1, accentColor: PKD }} />
+                <span style={{ fontSize: 12, color: INK_MUTE, fontVariantNumeric: 'tabular-nums', minWidth: 74, textAlign: 'right' }}>{t.toFixed(1)} / {total.toFixed(1)}초</span>
+              </div>
+
+              {/* 장면 목록 */}
+              <div style={{ width: 'min(480px, 92vw)', display: 'flex', gap: 6, overflowX: 'auto', paddingBottom: 4 }}>
+                {spec.scenes.map((sc, i) => (
+                  <button key={i} onClick={() => !dis && jumpScene(i)}
+                    style={{ flex: '0 0 auto', width: 58, padding: 0, border: `2px solid ${i === curScene ? PKD : 'transparent'}`, borderRadius: 8, overflow: 'hidden', background: '#eee', cursor: 'pointer', position: 'relative' }}>
+                    {thumbs[i] ? <img src={thumbs[i]} alt="" style={{ width: '100%', display: 'block' }} /> : <div style={{ height: 103 }} />}
+                    <span style={{ position: 'absolute', left: 3, top: 2, fontSize: 10, fontWeight: 900, color: '#fff', textShadow: '0 1px 2px rgba(0,0,0,.7)' }}>{i + 1}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ fontSize: 11.5, color: INK_MUTE }}>
+                {spec.style && spec.style.name ? <>디자인: <b style={{ color: INK_SOFT }}>{spec.style.name}</b> · </> : null}
+                지금 {curScene + 1}번 장면
+              </div>
+              {/* ✋ 손으로 고치기 (AI 안 씀) */}
+              {handEdit && <div style={{ height: 230, order: 99 }} /> /* 아래 고정 도구 막대에 내용이 가려지지 않게 */}
+              <div style={handEdit
+                ? { position: 'fixed', left: 0, right: 0, bottom: 0, zIndex: 30, margin: '0 auto', maxWidth: 540, boxSizing: 'border-box', background: '#fff', borderTop: `2px solid ${PKD}`, borderRadius: '16px 16px 0 0', boxShadow: '0 -8px 28px rgba(0,0,0,0.15)', padding: '10px 12px calc(10px + env(safe-area-inset-bottom))' }
+                : { ...card, width: 'min(480px, 92vw)', boxSizing: 'border-box', padding: 12 }}>
+                <button disabled={dis} onClick={() => { setPlaying(false); if (!handEdit) jumpScene(curScene); setHandEdit(!handEdit); }}
+                  style={{ ...bigBtn(handEdit ? PKD : INK, dis), padding: handEdit ? '8px 12px' : '10px 12px', fontSize: 13.5 }}>
+                  {handEdit ? '✓ 손으로 고치기 끝내기' : '✋ 손으로 고치기 (글자·사진 옮기기·크기 · AI 안 씀)'}
+                </button>
+                {!handEdit && <div style={{ fontSize: 10.5, color: INK_MUTE, marginTop: 6, lineHeight: 1.5 }}>마음에 드는 디자인을 고른 뒤 마지막에 손으로 다듬어 주세요. 그 뒤에 "🔄 다른 디자인으로"를 누르면 AI가 배치를 새로 짜서 손으로 맞춘 자리는 다시 바뀌어요.</div>}
+                {handEdit && (() => {
+                  const els = (spec.scenes[curScene] && spec.scenes[curScene].els) || [];
+                  const el = els[selEl];
+                  const nameOf = (e) => {
+                    if (!e) return '';
+                    const tx = String(e.text || '').replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
+                    const kind = { text: '글자', pill: '알약 태그', box: '카드·상자', circle: '동그라미', line: '선', arrow: '화살표', image: '사진', emoji: '이모지', checkbox: '체크박스', bar: '막대', ring: '도넛' }[e.type] || e.type;
+                    return tx ? `${kind} "${tx.length > 16 ? tx.slice(0, 16) + '…' : tx}"` : kind;
+                  };
+                  const sb = (lbl, fn, title, wide) => (
+                    <button disabled={dis || !el} onClick={fn} title={title}
+                      style={{ ...chip(false), padding: '7px 0', minWidth: wide ? 78 : 42, flex: wide ? '1 1 78px' : '0 0 42px', fontSize: 12.5, opacity: (dis || !el) ? 0.4 : 1 }}>{lbl}</button>
+                  );
+                  const isText = el && el.type === 'text';
+                  return (
+                    <div style={{ marginTop: 8 }}>
+                      <div style={{ fontSize: 11.5, color: INK_SOFT, lineHeight: 1.45, marginBottom: 6 }}>
+                        {el ? <>고른 것: <b style={{ color: PKD }}>{nameOf(el)}</b> · 끌어도 옮겨져요</>
+                            : <>위 미리보기({curScene + 1}번 장면)에서 바꿀 글자·사진을 <b>눌러서</b> 골라 주세요. 분홍 줄 아래는 인스타 버튼 자리예요.</>}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, alignItems: 'center' }}>
+                        {sb('↑', () => handMove(0, -20), '위로')}
+                        {sb('↓', () => handMove(0, 20), '아래로')}
+                        {sb('←', () => handMove(-20, 0), '왼쪽으로')}
+                        {sb('→', () => handMove(20, 0), '오른쪽으로')}
+                        {sb('가운데', handCenter, '가로 가운데로', true)}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                        {sb('＋ 크게', () => handScale(1.08), '크게', true)}
+                        {sb('－ 작게', () => handScale(1 / 1.08), '작게', true)}
+                        {isText && sb('↔ 폭 넓게', () => handWidth(1.08), '글줄 폭 넓게 (줄바꿈이 줄어요)', true)}
+                        {isText && sb('→← 폭 좁게', () => handWidth(1 / 1.08), '글줄 폭 좁게 (줄바꿈이 늘어요)', true)}
+                      </div>
+                      <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 }}>
+                        {sb('⬆ 다른 것 위로', () => handLayer(1), '겹친 것들 중 위에 보이게', true)}
+                        {sb('⬇ 다른 것 밑으로', () => handLayer(-1), '겹친 것들 중 밑에 깔리게', true)}
+                        {sb('🗑 이것 지우기', handDelete, '이 요소 지우기 (되돌리기 가능)', true)}
+                        <button disabled={dis || !undo.length} onClick={doUndo} style={{ ...chip(false), padding: '8px 12px', fontSize: 13, opacity: (dis || !undo.length) ? 0.4 : 1 }}>↩ 되돌리기</button>
+                      </div>
+
+                    </div>
+                  );
+                })()}
+              </div>
+              {/* 장면 직접 조정 (AI 안 씀) */}
+              <div style={{ width: 'min(480px, 92vw)', display: 'flex', flexWrap: 'wrap', alignItems: 'center', gap: 6, fontSize: 12, color: INK_SOFT }}>
+                <span style={{ fontWeight: 800, color: PKD }}>{curScene + 1}번 장면</span>
+                <button disabled={dis} onClick={() => setSceneDur(curScene, -0.5)} style={{ ...chip(false), padding: '4px 9px' }} title="0.5초 짧게">− 0.5초</button>
+                <b style={{ fontVariantNumeric: 'tabular-nums' }}>{(Number(spec.scenes[curScene] && spec.scenes[curScene].dur) || 0).toFixed(1)}초</b>
+                <button disabled={dis} onClick={() => setSceneDur(curScene, 0.5)} style={{ ...chip(false), padding: '4px 9px' }} title="0.5초 길게">+ 0.5초</button>
+                <button disabled={dis || curScene === 0} onClick={() => moveScene(curScene, -1)} style={{ ...chip(false), padding: '4px 9px', opacity: curScene === 0 ? 0.4 : 1 }} title="앞으로 옮기기">◀ 앞으로</button>
+                <button disabled={dis || curScene >= spec.scenes.length - 1} onClick={() => moveScene(curScene, 1)} style={{ ...chip(false), padding: '4px 9px', opacity: curScene >= spec.scenes.length - 1 ? 0.4 : 1 }} title="뒤로 옮기기">뒤로 ▶</button>
+                <button disabled={dis || spec.scenes.length <= 1} onClick={() => deleteScene(curScene)} style={{ ...chip(false), padding: '4px 9px', opacity: spec.scenes.length <= 1 ? 0.4 : 1 }}>🗑 지우기</button>
+              </div>
+              {photoNeed > (imagePool || []).length && (
+                <div style={{ width: 'min(480px, 92vw)', boxSizing: 'border-box', padding: '9px 11px', background: '#fff3f3', border: '1px solid #f5c2c2', borderRadius: 8, fontSize: 11.5, color: '#9b2c2c', lineHeight: 1.55 }}>
+                  📷 이 디자인에는 사진 <b>{photoNeed}장</b>이 들어가는데 지금 {(imagePool || []).length}장만 있어요. 새로고침하면 사진은 지워져요 — 왼쪽 사진 칸에 <b>같은 순서로</b> 다시 넣어 주세요. (빈 칸은 회색으로 보여요)
+                </div>
+              )}
+
+              {/* 바꾸기 (손으로 고치는 동안엔 숨김 — 끝내기를 누르면 다시 보여요) */}
+              <div style={{ ...card, width: 'min(480px, 92vw)', boxSizing: 'border-box', display: handEdit ? 'none' : undefined }}>
+                <span style={label}>바꾸기</span>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <button onClick={() => runAI('redesign')} disabled={dis} style={midBtn(dis)} title="글은 그대로, 색·글꼴·구성·움직임을 완전히 새로">🔄 다른 디자인으로</button>
+                  <button onClick={() => runAI('recontent')} disabled={dis} style={midBtn(dis)} title="지금 디자인은 그대로 두고, 왼쪽 주제 칸의 새 내용으로">📝 디자인 그대로 · 내용만 새로</button>
+                  <button onClick={() => runAI('edit', { sceneIndex: curScene, instruction: '이 장면을 완전히 새로운 배치와 움직임으로 다시 디자인해 줘. 글 내용과 영상 전체의 색·글꼴은 유지.' })} disabled={dis} style={midBtn(dis)}>🎲 {curScene + 1}번 장면만 다시</button>
+                  <button onClick={doUndo} disabled={dis || !undo.length} style={midBtn(dis || !undo.length)}>↩ 되돌리기</button>
+                </div>
+                <div style={{ fontSize: 10.5, color: INK_MUTE, marginTop: 6, lineHeight: 1.5 }}>"내용만 새로"는 왼쪽 주제 칸에 새 내용을 적은 뒤 눌러 주세요.</div>
+
+                <span style={{ ...label, marginTop: 14 }}>✏️ 말로 고치기</span>
+                <div style={{ display: 'flex', gap: 6, marginBottom: 6 }}>
+                  <button style={chip(editScope === 'scene')} onClick={() => setEditScope('scene')} disabled={dis}>{curScene + 1}번 장면만</button>
+                  <button style={chip(editScope === 'all')} onClick={() => setEditScope('all')} disabled={dis}>영상 전체</button>
+                </div>
+                <textarea value={editText} onChange={(e) => setEditText(e.target.value)} rows={2} disabled={dis}
+                  placeholder="예) 별 빼고 사진 넣어 줘 / 더 차분하게 / 제목 더 크게 / 마지막 장면 더 길게" style={{ ...input, resize: 'vertical', fontSize: 13 }} />
+                <button onClick={() => { if (!editText.trim()) { showToast('고칠 내용을 적어 주세요', 'warning', 2500); return; } runAI('edit', { sceneIndex: editScope === 'scene' ? curScene : -1, instruction: editText.trim() }); }}
+                  disabled={dis} style={{ ...bigBtn(INK, dis), marginTop: 8, padding: '10px 12px', fontSize: 13 }}>고치기</button>
+
+                <button onClick={() => setTextEditOpen(!textEditOpen)} disabled={dis}
+                  style={{ marginTop: 12, background: 'none', border: 'none', color: PKD, fontSize: 12, fontWeight: 800, cursor: 'pointer', padding: 0, fontFamily: 'inherit' }}>
+                  {textEditOpen ? '▲' : '▼'} 글자 직접 고치기 ({curScene + 1}번 장면 · AI 안 씀)
+                </button>
+                {textEditOpen && (
+                  <div style={{ marginTop: 8, display: 'flex', flexDirection: 'column', gap: 6 }}>
+                    {curEls.map((el, k) => (el.type === 'text' || el.type === 'pill') ? (
+                      <textarea key={k} value={el.text || ''} rows={Math.min(4, String(el.text || '').split('\n').length)}
+                        onChange={(e) => setElText(curScene, k, e.target.value)} disabled={dis}
+                        onBlur={() => { textUndoRef.current = false; }}
+                        style={{ ...input, fontSize: 12.5, padding: '7px 9px', resize: 'vertical' }} />
+                    ) : null)}
+                    <div style={{ fontSize: 10.5, color: INK_MUTE }}>**두 별표**로 감싼 부분이 강조돼요. 줄바꿈도 그대로 반영돼요.</div>
+                  </div>
+                )}
+              </div>
+
+              {/* 저장 */}
+              <div style={{ width: 'min(480px, 92vw)', display: handEdit ? 'none' : 'flex', flexDirection: 'column', gap: 8 }}>
+                <button onClick={exportMp4} disabled={dis} style={bigBtn('#1a1a1a', dis)}>🎬 영상 저장 (mp4)</button>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button onClick={() => exportPngs(false)} disabled={dis} style={midBtn(dis)}>🖼 이 장면 이미지</button>
+                  <button onClick={() => exportPngs(true)} disabled={dis} style={midBtn(dis)}>🖼 모든 장면 이미지 (PC)</button>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function ReelStudioV8() {
   // ─── 로그인 관문 ───────────────────────────────
   // Supabase Auth 로그인 (A방식). AI(돈)·기능 보호용 1차 방어막.
@@ -13392,6 +15492,13 @@ export default function ReelStudioV8() {
   const [loginPw, setLoginPw] = useState('');
   const [loginErr, setLoginErr] = useState('');
   const [loginBusy, setLoginBusy] = useState(false);
+  // 디자이너 모드에서 로그인 시간이 지났을 때 띄우는 작은 로그인 창 (페이지 새로고침 없음)
+  const [reloginOpen, setReloginOpen] = useState(false);
+  useEffect(() => {
+    const open = () => { setLoginErr(''); setLoginPw(''); setReloginOpen(true); };
+    window.addEventListener('reels-relogin', open);
+    return () => window.removeEventListener('reels-relogin', open);
+  }, []);
   const handleLogin = async () => {
     const id = loginId.trim();
     const pw = loginPw;
@@ -13414,7 +15521,11 @@ export default function ReelStudioV8() {
         } else {
           setAuthed(true);
           try { sessionStorage.setItem('reels_authed', '1'); } catch {}
+          // 디자이너 모드 AI는 "로그인한 선생님"인지 서버가 확인함 → 로그인 표(토큰)를 보관
+          reelsSaveSession(out);
           setLoginErr('');
+          setLoginPw('');
+          setReloginOpen(false);
         }
       } else {
         setLoginErr((out && (out.error_description || out.msg)) || '아이디 또는 비밀번호가 올바르지 않습니다.');
@@ -13649,6 +15760,26 @@ export default function ReelStudioV8() {
   const [pngProgress, setPngProgress] = useState(0);
   const [vidBusy, setVidBusy] = useState(false);
   const [vidProgress, setVidProgress] = useState(0);
+  // 움직임·다양성 설정 (AI 비용 없음 — 앱 안에서만 바뀜)
+  const [animStyle, setAnimStyle] = useState('auto');      // 등장 효과
+  const [animSeed, setAnimSeed] = useState(1);             // 섞기용 씨앗 (🎲 누를 때마다 바뀜)
+  const [transitionStyle, setTransitionStyle] = useState('fade'); // 영상 장면 전환
+  const [cameraStyle, setCameraStyle] = useState('breathe');    // 영상 카메라 움직임
+  const [vidStage, setVidStage] = useState('');            // 영상 만드는 중 안내 문구
+  const motionLockRef = useRef(false);                      // 움직이는 영상 중복 실행 방지
+  const motionCancelRef = useRef(false);                    // 움직이는 영상 '멈추기'
+  const [vidKind, setVidKind] = useState('');               // 'motion'(움직이는 영상) | 'legacy'(사진 넘기기)
+  const [vidHidden, setVidHidden] = useState(false);        // 만드는 도중 다른 탭으로 갔었는지
+  const [motionPreviewUrl, setMotionPreviewUrl] = useState(null); // 전환·카메라 미리 보기 영상
+  const [diagramBoost, setDiagramBoostState] = useState(() => reelsDiagramBoostOn()); // 도식 글씨 크게
+  const setDiagramBoost = (v) => {
+    window.__reelsDiagramBoost = !!v;
+    try { localStorage.setItem('reels_diagram_boost', v ? '1' : '0'); } catch (e) {}
+    setDiagramBoostState(!!v);
+  };
+  // 빠른 모드 / 🎨 디자이너 모드
+  const [studioMode, setStudioMode] = useState(() => { try { return localStorage.getItem('reels_studio_mode') || 'quick'; } catch (e) { return 'quick'; } });
+  useEffect(() => { try { localStorage.setItem('reels_studio_mode', studioMode); } catch (e) {} }, [studioMode]);
   const [previewMode, setPreviewMode] = useState('reels'); // 'reels' | 'blogWarm' | 'blogPro'
   const [blogShowDiagram, setBlogShowDiagram] = useState(false);
   // 블로그 영역 ref (도식 PNG 다운로드용)
@@ -13676,9 +15807,12 @@ export default function ReelStudioV8() {
 
   // 간단 입력의 다중 이미지 풀 (AI 텍스트 + 사용자 이미지 자동 결합용)
   const [imagePool, setImagePool] = useState([]); // base64 dataUrl 배열
+  // 디자이너 모드 사진은 따로 보관 (디자이너에서 사진을 넣고 빼도 빠른 모드 슬라이드는 그대로)
+  const [dsImagePool, setDsImagePool] = useState(null);
   const [imageMode, setImageMode] = useState('cycle'); // 'cycle' | 'once' | 'manual'
 
   const rafRef = useRef(null);
+  const stopAtRef = useRef(null); // '지금 슬라이드로 미리 보기'는 그 장면 끝에서 멈춤
   const startRef = useRef(null);
 
   const themeUser = THEMES[themeKey];
@@ -14558,6 +16692,9 @@ export default function ReelStudioV8() {
     if (!config) return;
     if (!startRef.current) startRef.current = ts;
     const e = ts - startRef.current;
+    if (stopAtRef.current != null && e >= stopAtRef.current) {
+      setElapsed(stopAtRef.current); stopAtRef.current = null; setIsPlaying(false); return;
+    }
     setElapsed(Math.min(e, config.totalMs));
     if (e < config.totalMs) rafRef.current = requestAnimationFrame(tick);
     else setIsPlaying(false);
@@ -14565,6 +16702,7 @@ export default function ReelStudioV8() {
 
   function togglePlay() {
     if (!config) return;
+    stopAtRef.current = null;
     if (isPlaying) {
       cancelAnimationFrame(rafRef.current);
       setIsPlaying(false);
@@ -14578,6 +16716,21 @@ export default function ReelStudioV8() {
 
   // 초기 빌드
   useEffect(() => { applyForm(); /* eslint-disable-next-line */ }, []);
+
+  // 디자인에 쓰는 글꼴을 앱이 직접 불러오기 — 예전엔 불러오는 코드가 없어서
+  // 기기에 깔린 기본 글꼴로 대신 보였음 (명조체 양식이 고딕으로 나오는 등)
+  useEffect(() => {
+    try {
+      const add = (id, href) => {
+        if (document.getElementById(id)) return;
+        const l = document.createElement('link');
+        l.id = id; l.rel = 'stylesheet'; l.href = href; l.crossOrigin = 'anonymous';
+        document.head.appendChild(l);
+      };
+      add('reels-font-pretendard', 'https://cdn.jsdelivr.net/gh/orioncactus/pretendard@v1.3.9/dist/web/static/pretendard-dynamic-subset.min.css');
+      add('reels-font-google', 'https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800;900&family=Nanum+Myeongjo:wght@400;700;800&family=Noto+Sans+KR:wght@400;500;700;900&family=Noto+Serif+KR:wght@400;600;700;900&display=swap');
+    } catch (e) { /* 글꼴을 못 불러와도 앱은 그대로 작동 */ }
+  }, []);
   useEffect(() => () => cancelAnimationFrame(rafRef.current), []);
 
   // ===== 릴스 다운로드 (PNG + 영상) =====
@@ -14627,7 +16780,7 @@ export default function ReelStudioV8() {
   // 폰트 깨짐이 없고, 오염(tainted) 문제도 useCORS 옵션으로 회피한다.
   // onclone: 캡처용 복제본에서 애니메이션(fadeUp/fadeIn 등)을 즉시 완료
   //          상태로 고정 → 글자가 제자리에 놓여 겹침/깨짐 방지.
-  async function dlCaptureCanvas(node) {
+  async function dlCaptureCanvas(node, opts = {}) {
     if (typeof window.html2canvas !== 'function') {
       throw new Error('html2canvas 미로드');
     }
@@ -14637,18 +16790,24 @@ export default function ReelStudioV8() {
       if (document.fonts && document.fonts.ready) {
         await document.fonts.ready;
         // 실제 사용 폰트 몇 개를 명시적으로 로드 트리거 (Safari/일부 브라우저 안전)
-        await Promise.all([
-          document.fonts.load('800 17px Pretendard').catch(() => {}),
-          document.fonts.load('600 10px Pretendard').catch(() => {}),
-        ]);
+        if (!opts.skipFontWait) {
+          await Promise.all([
+            document.fonts.load('800 17px Pretendard').catch(() => {}),
+            document.fonts.load('600 10px Pretendard').catch(() => {}),
+            document.fonts.load('700 17px "Noto Serif KR"').catch(() => {}),
+            document.fonts.load('800 17px "Nanum Myeongjo"').catch(() => {}),
+          ]);
+        }
       }
     } catch (e) { /* 폰트 API 미지원 시 무시 */ }
     const rect = node.getBoundingClientRect();
     const w = Math.max(1, Math.round(rect.width));
     const h = Math.max(1, Math.round(rect.height));
+    // 인스타 규격(가로 1080칸)에 딱 맞게 찍기 — 작은 미리보기를 찍어서 늘리면 흐려짐
+    const scale = opts.scale || (1080 / w);
     return await window.html2canvas(node, {
       backgroundColor: '#ffffff',
-      scale: 2,
+      scale,
       useCORS: true,
       allowTaint: false,
       logging: false,
@@ -14658,17 +16817,20 @@ export default function ReelStudioV8() {
       windowHeight: document.documentElement.scrollHeight,
       onclone: (clonedDoc) => {
         try {
-          // 모든 애니메이션/트랜지션 제거 + 최종 상태(불투명·이동 없음)로 고정
+          // 애니메이션/트랜지션만 끄기 — 등장 애니메이션은 찍기 전에 이미 최종 상태(또는
+          // 영상 프레임 모드에서는 그 순간의 상태)로 계산돼 있음.
+          // ※ 예전에는 여기서 모든 요소를 opacity 1로 강제해서, 일부러 연하게 만든 장식
+          //    (배경의 큰 숫자, 점무늬, 진행 점 등)까지 진하게 찍히는 문제가 있었음 → 제거.
           const style = clonedDoc.createElement('style');
           style.textContent = `
             *, *::before, *::after {
               animation: none !important;
               transition: none !important;
-              opacity: 1 !important;
-              filter: none !important;
               text-rendering: geometricPrecision !important;
             }
             .dl-hide { display: none !important; }
+            /* 미리보기용 둥근 모서리·그림자는 저장본에서 빼기 → 모서리에 흰 틈이 안 생김 */
+            #reels-capture-target > div { border-radius: 0 !important; box-shadow: none !important; }
           `;
           clonedDoc.head.appendChild(style);
         } catch (e) {}
@@ -14782,7 +16944,7 @@ export default function ReelStudioV8() {
       showToast('이 브라우저는 MediaRecorder 미지원', 'warning', 5000); return;
     }
     if (isPlaying) togglePlay();
-    setVidBusy(true); setVidProgress(0);
+    setVidBusy(true); setVidProgress(0); setVidKind('legacy');
     if (typeof window !== 'undefined') window.__reelsCapturing = true; // 녹화 중 등장 애니메이션 끄기 → 전환 프레임 방지
     const total = config.scenes.length;
     const originalIdx = currentSceneIdx;
@@ -14956,8 +17118,329 @@ export default function ReelStudioV8() {
     } finally {
       if (typeof window !== 'undefined') window.__reelsCapturing = false;
       if (originalIdx >= 0 && originalIdx < total) { try { gotoScene(originalIdx); } catch (e) {} }
-      setTimeout(() => { setVidBusy(false); setVidProgress(0); }, 1000);
+      setTimeout(() => { setVidBusy(false); setVidProgress(0); setVidKind(''); }, 1000);
     }
+  }
+
+  // ===================================================================
+  // 움직이는 영상 (mp4) — "시간을 멈추고 한 장씩 찍어서" 만드는 방식
+  // ───────────────────────────────────────────────────────────────────
+  // 예전 방식(downloadReelsVideo)은 실시간 녹화라 등장 애니메이션을 끄고 완성 화면만
+  // 몇 초씩 보여 주는 '사진 넘기기'였다. 이 방식은 1초를 30장으로 나눠, 장마다
+  // 그 순간의 화면을 계산해서 찍고, 브라우저의 영상 압축 기능(WebCodecs)으로
+  // mp4를 직접 만든다. 실시간이 아니라서 컴퓨터가 느려도 장면이 빠지지 않는다.
+  // 지원하지 않는 브라우저에서는 자동으로 예전 방식으로 만든다.
+  // ===================================================================
+  function loadMp4Muxer() {
+    if (window.Mp4Muxer) return Promise.resolve(window.Mp4Muxer);
+    return new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/mp4-muxer@5.2.2/build/mp4-muxer.js';
+      // 인터넷이 느려 20초 안에 못 받으면 포기하고 예전 방식으로 (무한 '준비 중' 방지)
+      const tm = setTimeout(() => { try { s.remove(); } catch (e) {} reject(new Error('mp4-muxer 시간 초과')); }, 20000);
+      s.onload = () => { clearTimeout(tm); window.Mp4Muxer ? resolve(window.Mp4Muxer) : reject(new Error('mp4-muxer 없음')); };
+      s.onerror = () => { clearTimeout(tm); try { s.remove(); } catch (e) {} reject(new Error('mp4-muxer 로드 실패')); };
+      document.head.appendChild(s);
+    });
+  }
+
+  async function pickVideoEncoderConfig(W, H, fps) {
+    if (typeof window.VideoEncoder !== 'function' || typeof window.VideoFrame !== 'function') return null;
+    const codecs = ['avc1.640028', 'avc1.4d0028', 'avc1.42e028', 'avc1.640032', 'avc1.42e032'];
+    for (const codec of codecs) {
+      const cfg = { codec, width: W, height: H, bitrate: 10_000_000, framerate: fps, avc: { format: 'avc' } };
+      try {
+        const r = await window.VideoEncoder.isConfigSupported(cfg);
+        if (r && r.supported) return cfg;
+      } catch (e) { /* 다음 코덱 시도 */ }
+    }
+    return null;
+  }
+
+  // 장면 전환 효과 계산용
+  const easeInOutCubic = (x) => (x < 0.5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2);
+
+  async function downloadReelsMotionVideo(opts) {
+    // preview: 앞 3장만 작은 크기로 빨리 만들어 화면에서 보여 주기 (파일 저장 안 함)
+    const preview = !!(opts && opts.preview === true);
+    if (!config || !config.scenes || config.scenes.length === 0) {
+      showToast('먼저 슬라이드를 생성해주세요', 'warning', 3000); return;
+    }
+    if (pngBusy || vidBusy || motionLockRef.current) return;
+    motionLockRef.current = true; // 준비하는 몇 초 사이에 버튼을 또 눌러도 두 번 돌지 않게
+    setVidBusy(true); setVidStage('준비 중'); setVidKind('motion'); // 준비하는 동안 다른 저장 버튼도 잠가 둠
+    motionCancelRef.current = false; setVidHidden(false);
+    try {
+    const W = preview ? 540 : 1080, H = preview ? 960 : 1920, FPS = 30;
+
+    const encCfg = await pickVideoEncoderConfig(W, H, FPS);
+    let Mux = null;
+    if (encCfg) {
+      try { Mux = await loadMp4Muxer(); } catch (e) { console.warn('[rec] muxer 로드 실패', e?.message); }
+    }
+    if (motionCancelRef.current) { setVidBusy(false); setVidStage(''); setVidKind(''); showToast('영상 만들기를 멈췄어요', 'info', 3000); return; }
+    if ((!encCfg || !Mux) && preview) {
+      setVidBusy(false); setVidStage(''); setVidKind('');
+      showToast('이 브라우저는 전환 미리 보기가 안 돼요 — 크롬·엣지·최신 사파리에서 돼요', 'warning', 5000);
+      return;
+    }
+    if (!encCfg || !Mux) {
+      setVidBusy(false); setVidStage('');
+      showToast('이 브라우저는 움직이는 영상을 지원하지 않아요 — 기존 방식(사진 넘기기)으로 만들게요. 크롬·엣지·최신 사파리에서는 움직이는 영상이 돼요.', 'warning', 7000);
+      return downloadReelsVideo();
+    }
+
+    if (isPlaying) togglePlay();
+    setVidBusy(true); setVidProgress(0);
+    const originalIdx = currentSceneIdx;
+    const scenes = preview ? config.scenes.slice(0, 3) : config.scenes;
+    const total = scenes.length;
+
+    // 장면별 길이·프레임 수
+    const sceneFrames = scenes.map(s => Math.max(1, Math.round(((s.endMs - s.startMs) / 1000) * FPS)));
+    const totalFrames = sceneFrames.reduce((a, b) => a + b, 0);
+
+    const out = document.createElement('canvas');
+    out.width = W; out.height = H;
+    const ctx = out.getContext('2d');
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+
+    // 이전 장면의 마지막 화면 (장면 전환용)
+    const prevCanvas = document.createElement('canvas');
+    prevCanvas.width = W; prevCanvas.height = H;
+    const prevCtx = prevCanvas.getContext('2d');
+    let hasPrev = false;
+    let prevZoom = 1;
+    // 이전 장면 마지막 모습 (카메라 적용 전 원본)
+    const prevRaw = document.createElement('canvas');
+    prevRaw.width = W; prevRaw.height = H;
+    const prevRawCtx = prevRaw.getContext('2d');
+
+    let encoderError = null;
+    let muxer = null;
+    let encoder = null;
+
+    const TRANS_MS = 450;     // 장면 전환 시간
+    // 화면이 계속 바뀌는 동안 몇 프레임마다 새로 찍을지 (아이폰은 메모리가 적어서 조금 더 띄엄띄엄)
+    const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+    const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window) && navigator.maxTouchPoints > 0;
+    // 컴퓨터는 매 프레임 새로 찍어 글자 움직임도 30fps로 부드럽게, 휴대폰은 메모리·시간 때문에 띄엄띄엄
+    const CAPTURE_GAP = isIOS ? 3 : (isTouch ? 2 : 1);
+    const CAM = 0.04;         // 카메라 확대 정도 (4%)
+
+    const drawZoomed = (c, img, zoom, dx = 0, dy = 0, alpha = 1) => {
+      const dw = W * zoom, dh = H * zoom;
+      c.globalAlpha = alpha;
+      c.drawImage(img, (W - dw) / 2 + dx, (H - dh) / 2 + dy, dw, dh);
+      c.globalAlpha = 1;
+    };
+    const cameraZoomAt = (sceneIdx, frac) => {
+      // 숨쉬듯: 다가가기·멀어지기를 번갈아 → 장면이 바뀌어도 크기가 이어져서 튀지 않음
+      const mode = cameraStyle === 'breathe' ? (sceneIdx % 2 === 0 ? 'in' : 'out') : cameraStyle;
+      if (mode === 'in') return 1 + CAM * frac;
+      if (mode === 'out') return 1 + CAM * (1 - frac);
+      return 1;
+    };
+    const transitionFor = (sceneIdx) => {
+      if (transitionStyle !== 'mix') return transitionStyle;
+      const i = Math.floor(seededRand((animSeed || 0) + 7, sceneIdx) * TRANSITION_MIX_POOL.length);
+      return TRANSITION_MIX_POOL[i];
+    };
+
+    window.__reelsCapturing = false;
+    window.__reelsFrameMode = true;
+    let frameNo = 0;
+    const t0 = performance.now();
+    try {
+      muxer = new Mux.Muxer({
+        target: new Mux.ArrayBufferTarget(),
+        video: { codec: 'avc', width: W, height: H, frameRate: FPS },
+        fastStart: 'in-memory',
+      });
+      encoder = new window.VideoEncoder({
+        output: (chunk, meta) => muxer.addVideoChunk(chunk, meta),
+        error: (e) => { encoderError = e; console.error('[rec] encoder error', e); },
+      });
+      encoder.configure(encCfg);
+
+      // 웹폰트를 한 번만 확실히 불러 두기
+      try {
+        if (document.fonts && document.fonts.ready) await document.fonts.ready;
+      } catch (e) {}
+
+      for (let i = 0; i < total; i++) {
+        const sc = scenes[i];
+        const nF = sceneFrames[i];
+        const trans = i > 0 && hasPrev ? transitionFor(i) : 'cut';
+        let curCanvas = null;
+        let lastSig = null;
+        let lastCapFrame = -999;
+
+        for (let f = 0; f < nF; f++) {
+          if (encoderError) throw encoderError;
+          if (motionCancelRef.current) { const ce = new Error('멈춤'); ce.code = 'CANCEL'; throw ce; }
+          if (typeof document !== 'undefined' && document.hidden) setVidHidden(true);
+          const tLocal = (f * 1000) / FPS;
+          // 그 순간의 화면으로 즉시 바꾸기 (React가 바로 그리도록 flushSync)
+          // (+0.5ms: 직전 상태와 값이 같아 다시 그려지지 않는 일을 막음)
+          flushSync(() => setElapsed(sc.startMs + Math.min(tLocal + 0.5, Math.max(0.5, sc.endMs - sc.startMs - 1))));
+          const target = document.getElementById('reels-capture-target');
+          if (!target) throw new Error('캡처 대상을 찾지 못함');
+
+          if (f === 0) {
+            // 장면 첫 장: 사진이 다 뜰 때까지 기다리기
+            const imgs = Array.from(target.querySelectorAll('img'));
+            await Promise.all(imgs.map(im => (im.complete && im.naturalWidth) ? null : (im.decode ? im.decode().catch(() => {}) : null)));
+          }
+
+          // 바뀐 게 있는지: 등장 효과가 바꾸는 값(투명도·위치·흐림)만 모아서 비교 (사진 데이터까지 읽지 않아 가볍게)
+          let sig = '';
+          const styled = target.querySelectorAll('[style]');
+          for (let k = 0; k < styled.length; k++) { const st = styled[k].style; sig += st.opacity + '|' + st.transform + '|' + st.filter + ';'; }
+          const changed = sig !== lastSig;
+          // 바뀐 게 있고, (처음이거나 마지막으로 찍은 지 2프레임 지났으면) 새로 찍기
+          if (!curCanvas || (changed && f - lastCapFrame >= CAPTURE_GAP)) {
+            const fresh = await dlCaptureCanvas(target, { scale: W / Math.max(1, target.getBoundingClientRect().width), skipFontWait: true });
+            if (curCanvas) { curCanvas.width = 0; curCanvas.height = 0; } // 지난 장 메모리 바로 비우기 (아이폰 대비)
+            curCanvas = fresh;
+            lastSig = sig;
+            lastCapFrame = f;
+          }
+
+          // ── 합성: 카메라 + 장면 전환 ──
+          const frac = nF > 1 ? f / (nF - 1) : 1;
+          const zoom = cameraZoomAt(i, frac);
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, W, H);
+          if (trans !== 'cut' && tLocal < TRANS_MS) {
+            const p = easeInOutCubic(Math.min(1, tLocal / TRANS_MS));
+            // 페이드·닦아내기는 두 화면을 같은 크기로 겹쳐야 공통 요소(로고 등)가 두 겹으로 안 보임
+            const zMix = prevZoom + (zoom - prevZoom) * p;
+            if (trans === 'fade') {
+              drawZoomed(ctx, prevRaw, zMix);
+              drawZoomed(ctx, curCanvas, zMix, 0, 0, p);
+            } else if (trans === 'slideUp') {
+              drawZoomed(ctx, prevCanvas, 1, 0, -H * p);
+              drawZoomed(ctx, curCanvas, zoom, 0, H * (1 - p));
+            } else if (trans === 'slideL') {
+              drawZoomed(ctx, prevCanvas, 1, -W * p, 0);
+              drawZoomed(ctx, curCanvas, zoom, W * (1 - p), 0);
+            } else if (trans === 'zoomIn') {
+              drawZoomed(ctx, prevCanvas, 1 + 0.18 * p, 0, 0, 1);
+              drawZoomed(ctx, curCanvas, zoom * (0.9 + 0.1 * p), 0, 0, p);
+            } else if (trans === 'wipe') {
+              drawZoomed(ctx, prevRaw, zMix);
+              ctx.save();
+              ctx.beginPath();
+              ctx.rect(0, 0, W * p, H);
+              ctx.clip();
+              drawZoomed(ctx, curCanvas, zMix);
+              ctx.restore();
+              // 닦아내는 경계선
+              ctx.fillStyle = 'rgba(255,255,255,0.85)';
+              ctx.fillRect(W * p - 6, 0, 6, H);
+            } else {
+              drawZoomed(ctx, curCanvas, zoom);
+            }
+          } else {
+            drawZoomed(ctx, curCanvas, zoom);
+          }
+
+          // ── 영상 프레임으로 압축 ──
+          const vf = new window.VideoFrame(out, { timestamp: Math.round((frameNo * 1e6) / FPS), duration: Math.round(1e6 / FPS) });
+          encoder.encode(vf, { keyFrame: frameNo % (FPS * 2) === 0 });
+          vf.close();
+          frameNo++;
+          while (encoder.encodeQueueSize > 6) await new Promise(r => setTimeout(r, 4));
+
+          if (frameNo % 6 === 0) {
+            const pct = Math.min(99, Math.round((frameNo / totalFrames) * 100));
+            const spent = (performance.now() - t0) / 1000;
+            const left = frameNo > 30 ? Math.max(0, Math.round((spent / frameNo) * (totalFrames - frameNo))) : null;
+            setVidProgress(pct);
+            setVidStage(`${i + 1}/${total}장${left != null ? ` · 약 ${left >= 60 ? Math.floor(left / 60) + '분 ' : ''}${left % 60}초 남음` : ''}`);
+            // 화면이 멈추지 않도록 잠깐 숨 고르기
+            await new Promise(r => setTimeout(r, 0));
+          }
+        }
+
+        // 이 장면의 마지막 모습을 다음 전환용으로 저장 (카메라 상태 포함)
+        if (curCanvas) {
+          prevCtx.fillStyle = '#ffffff';
+          prevCtx.fillRect(0, 0, W, H);
+          prevZoom = cameraZoomAt(i, 1);
+          drawZoomed(prevCtx, curCanvas, prevZoom);
+          prevRawCtx.drawImage(curCanvas, 0, 0, W, H);
+          hasPrev = true;
+          curCanvas.width = 0; curCanvas.height = 0; // 다 쓴 장면 메모리 비우기
+        }
+      }
+
+      setVidStage('파일로 묶는 중');
+      await encoder.flush();
+      if (encoderError) throw encoderError;
+      muxer.finalize();
+      const buf = muxer.target.buffer;
+      const blob = new Blob([buf], { type: 'video/mp4' });
+      if (blob.size < 1000) throw new Error('영상이 비어 있음');
+      if (preview) {
+        setMotionPreviewUrl(old => { if (old) { try { URL.revokeObjectURL(old); } catch (e) {} } return URL.createObjectURL(blob); });
+        setVidProgress(100);
+        return;
+      }
+      dlTrigger(blob, `reels_motion_${Date.now()}.mp4`);
+      setVidProgress(100);
+      showToast('✅ 움직이는 영상(mp4) 저장 완료 — 휴대폰은 \'파일\' 앱(다운로드)에 저장돼요. 소리는 없으니 인스타에서 음악을 넣어 주세요', 'success', 7000);
+    } catch (err) {
+      if (err && err.code === 'CANCEL') showToast('영상 만들기를 멈췄어요', 'info', 3000);
+      else {
+        console.error('[rec] 움직이는 영상 실패:', err);
+        showToast('움직이는 영상 만들기 실패 — [사진 넘기기 영상]으로 다시 시도해 보세요', 'warning', 6000);
+      }
+    } finally {
+      try { if (encoder && encoder.state !== 'closed') encoder.close(); } catch (e) {}
+      window.__reelsFrameMode = false;
+      window.__reelsCapturing = false;
+      if (originalIdx >= 0 && config && config.scenes && originalIdx < config.scenes.length) { try { gotoScene(originalIdx); } catch (e) {} }
+      try { out.width = out.height = 0; prevCanvas.width = prevCanvas.height = 0; prevRaw.width = prevRaw.height = 0; } catch (e) {}
+      setTimeout(() => { setVidBusy(false); setVidProgress(0); setVidStage(''); setVidKind(''); }, preview ? 0 : 1000);
+    }
+    } finally {
+      motionLockRef.current = false;
+    }
+  }
+
+  // ===== 🎲 새 조합 — 글은 그대로, 디자인·색·등장 효과·전환·카메라를 한 번에 바꾸기 =====
+  function shuffleDesign() {
+    const pick = (arr, avoid) => {
+      const pool = arr.length > 1 ? arr.filter(x => x !== avoid) : arr;
+      return pool[Math.floor(Math.random() * pool.length)];
+    };
+    // 같은 양식(글 구조)을 쓰는 디자인 중에서 고르기 → 글 내용이 바뀌지 않음
+    const sameFormat = VARIANTS.filter(v => v.format === formatKey);
+    const msgs = [];
+    if (sameFormat.length > 1) {
+      const cur = VARIANTS.find(v => v.id === activeVariantId);
+      const v = pick(sameFormat, cur);
+      setActiveVariantId(v.id);
+      setLayoutKey(v.layout);
+      msgs.push(v.name);
+    } else {
+      const lk = pick(LAYOUT_LANGUAGE_KEYS, layoutKey);
+      setLayoutKey(lk);
+      msgs.push(LAYOUT_LANGUAGES[lk]?.name || lk);
+    }
+    if (!isClinicalActive) {
+      const tk = pick(Object.keys(THEMES), themeKey);
+      setThemeKey(tk);
+      msgs.push(THEMES[tk]?.name || tk);
+    }
+    setAnimStyle('mix');
+    setAnimSeed(Math.floor(Math.random() * 100000) + 1);
+    setTransitionStyle('mix');
+    setCameraStyle(pick(['breathe', 'in', 'out'], cameraStyle));
+    showToast(`🎲 새 조합: ${msgs.join(' · ')} · 등장 효과·전환 섞기`, 'success', 3000);
   }
 
   // 이미지 풀이 바뀌면 현재 config의 슬라이드 배경에 자동 배분 (텍스트 생성과 독립적)
@@ -15185,6 +17668,60 @@ export default function ReelStudioV8() {
         </div>
       )}
 
+      {/* ─── 전환·카메라 미리 보기 (앞 3장) ─── */}
+      {motionPreviewUrl && (
+        <div onClick={() => { try { URL.revokeObjectURL(motionPreviewUrl); } catch (e) {} setMotionPreviewUrl(null); }}
+          style={{ position: 'fixed', inset: 0, zIndex: 8600, background: 'rgba(0,0,0,0.6)', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: 16, gap: 10 }}>
+          <video src={motionPreviewUrl} autoPlay loop muted playsInline onClick={(e) => e.stopPropagation()}
+            style={{ height: 'min(70vh, 640px)', aspectRatio: '9 / 16', borderRadius: 12, background: '#000' }} />
+          <div style={{ color: '#fff', fontSize: 12.5, textAlign: 'center', lineHeight: 1.5 }}>앞 3장 미리 보기예요 (작은 크기 · 저장 안 됨)<br/>마음에 들면 [움직이는 영상]으로 저장하세요</div>
+          <button style={{ padding: '9px 22px', borderRadius: 10, border: 'none', background: '#fff', color: '#333', fontWeight: 800, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>닫기</button>
+        </div>
+      )}
+
+      {/* ─── 영상 만드는 동안: 다른 버튼을 누르지 못하게 화면을 잠그고, 진행 상황·멈추기만 보여 줌 ─── */}
+      {vidBusy && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 8500, background: 'rgba(255,255,255,0.35)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', padding: 16 }}>
+          <div style={{ background: '#fff', borderRadius: 14, boxShadow: '0 8px 30px rgba(0,0,0,0.18)', padding: '14px 16px', width: '100%', maxWidth: 420, fontFamily: 'inherit' }}>
+            <div style={{ fontSize: 14, fontWeight: 800, color: '#333' }}>🎬 영상 만드는 중... {vidProgress}%</div>
+            {vidStage && <div style={{ fontSize: 12, color: '#777', marginTop: 3 }}>{vidStage}</div>}
+            <div style={{ height: 6, background: '#eee', borderRadius: 3, marginTop: 8, overflow: 'hidden' }}>
+              <div style={{ width: `${vidProgress}%`, height: '100%', background: PKD, transition: 'width .3s' }} />
+            </div>
+            <div style={{ fontSize: 11.5, color: '#888', lineHeight: 1.5, marginTop: 8 }}>
+              다 될 때까지 이 화면을 켜 두세요. 다른 탭으로 가거나 휴대폰 화면이 꺼지면 아주 느려지거나 멈출 수 있어요.
+            </div>
+            {vidHidden && <div style={{ fontSize: 11.5, color: '#C0392B', marginTop: 4 }}>잠깐 다른 화면으로 가 있어서 느려졌어요. 이 화면에 그대로 두시면 이어서 만들어요.</div>}
+            {vidKind === 'motion' && (
+              <button onClick={() => { motionCancelRef.current = true; setVidStage('멈추는 중'); }}
+                style={{ marginTop: 10, width: '100%', padding: '10px 0', borderRadius: 10, border: '1px solid #ddd', background: '#fff', color: '#555', fontWeight: 700, fontSize: 13, cursor: 'pointer', fontFamily: 'inherit' }}>멈추기</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ─── 다시 로그인 창 (만들던 것은 그대로 둔 채 로그인만 다시) ─── */}
+      {reloginOpen && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9998, background: 'rgba(0,0,0,0.45)', display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 16 }}>
+          <form onSubmit={(e) => { e.preventDefault(); if (!loginBusy) handleLogin(); }}
+            style={{ background: '#fff', borderRadius: 16, padding: 22, width: '100%', maxWidth: 340, boxShadow: '0 12px 40px rgba(0,0,0,0.25)', fontFamily: 'inherit' }}>
+            <div style={{ fontSize: 16, fontWeight: 800, color: '#333', marginBottom: 6 }}>다시 로그인</div>
+            <div style={{ fontSize: 12.5, color: '#777', lineHeight: 1.5, marginBottom: 14 }}>로그인 시간이 지났어요. 만들던 릴스와 사진은 그대로 있어요.</div>
+            <input type="text" autoComplete="username" placeholder="아이디" value={loginId} onChange={e => setLoginId(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: '1px solid #ddd', borderRadius: 10, fontSize: 14, marginBottom: 8, fontFamily: 'inherit' }} />
+            <input type="password" autoComplete="current-password" placeholder="비밀번호" value={loginPw} onChange={e => setLoginPw(e.target.value)}
+              style={{ width: '100%', boxSizing: 'border-box', padding: '11px 12px', border: '1px solid #ddd', borderRadius: 10, fontSize: 14, marginBottom: 8, fontFamily: 'inherit' }} />
+            {loginErr && <div style={{ color: '#C0392B', fontSize: 12.5, marginBottom: 8 }}>{loginErr}</div>}
+            <div style={{ display: 'flex', gap: 8, marginTop: 4 }}>
+              <button type="button" onClick={() => setReloginOpen(false)} disabled={loginBusy}
+                style={{ flex: 1, padding: '11px 0', borderRadius: 10, border: '1px solid #ddd', background: '#fff', color: '#666', fontWeight: 700, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>닫기</button>
+              <button type="submit" disabled={loginBusy}
+                style={{ flex: 2, padding: '11px 0', borderRadius: 10, border: 'none', background: '#D4728A', color: '#fff', fontWeight: 800, fontSize: 14, cursor: 'pointer', fontFamily: 'inherit' }}>{loginBusy ? '로그인 중...' : '로그인'}</button>
+            </div>
+          </form>
+        </div>
+      )}
+
       {/* ─── 토스트 컨테이너 (우상단 스택) ─── */}
       {toasts.length > 0 && (
         <div style={{
@@ -15238,6 +17775,17 @@ export default function ReelStudioV8() {
           `}</style>
         </div>
       )}
+      {/* ─── 🎨 디자이너 모드 (빠른 모드 위에 전체 화면으로 덮어서 표시 — 빠른 모드 작업 내용은 그대로 유지됨) ─── */}
+      {studioMode === 'designer' && (
+        <div style={{ position: 'fixed', inset: 0, zIndex: 9000, overflowY: 'auto', WebkitOverflowScrolling: 'touch' }}>
+          <DesignerStudio
+            onExit={() => setStudioMode('quick')}
+            imagePool={dsImagePool || []}
+            setImagePool={setDsImagePool}
+            showToast={showToast}
+          />
+        </div>
+      )}
         <div style={{ maxWidth: 1280, margin: '0 auto' }}>
           {/* ─── 헤더 ─── */}
           <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginBottom: 8 }}>
@@ -15255,6 +17803,26 @@ export default function ReelStudioV8() {
                 검단ABA 통합 릴스 스튜디오
               </h1>
             </div>
+            <div style={{ flex: 1 }} />
+            <button onClick={() => { if (isPlaying) togglePlay(); if (dsImagePool === null) {
+              // 저장돼 있던 디자인에 사진 칸이 있으면, 빠른 모드 사진을 자동으로 넣지 않음 (다른 아이 사진이 엉뚱하게 들어가는 것 방지)
+              let savedHasPhoto = false;
+              try {
+                const sv = JSON.parse(localStorage.getItem('ds_last_spec') || 'null');
+                savedHasPhoto = !!(sv && Array.isArray(sv.scenes) && sv.scenes.some(sc => sc && Array.isArray(sc.els) && sc.els.some(el => el && el.type === 'image' && /^photo\d+$/.test(String(el.src || '')))));
+              } catch (e) {}
+              setDsImagePool(savedHasPhoto ? [] : [...(imagePool || [])]);
+            } setStudioMode('designer'); }}
+              disabled={pngBusy || vidBusy}
+              title="AI가 색·글꼴·구성·움직임을 매번 새로 디자인하는 모드"
+              style={{
+                padding: '10px 14px', borderRadius: 10, border: 'none',
+                background: `linear-gradient(135deg, ${PKD}, ${PK})`, color: '#fff',
+                fontSize: 13, fontWeight: 800, cursor: 'pointer', fontFamily: 'inherit',
+                boxShadow: '0 4px 12px rgba(212,114,138,0.25)', whiteSpace: 'nowrap',
+              }}>
+              🎨 디자이너 모드
+            </button>
           </div>
           <p style={{ fontSize: 12.5, color: '#666', marginBottom: 20, marginLeft: 56 }}>
             AI 임상 자동 생성 · 양식 6종 · LAYOUT {Object.keys(LAYOUT_LANGUAGES).length}종 · 슬라이드별 양식 자유 변경
@@ -15653,6 +18221,8 @@ export default function ReelStudioV8() {
                       setSceneToneArtOverride={setSceneToneArtOverride}
                       contentEditMode={textContentEditMode}
                       onContentChange={setSceneText}
+                      animStyle={animStyle}
+                      animSeed={animSeed}
                     />
                     </div>
                   </InstaFrameWrapper>
@@ -15935,6 +18505,32 @@ export default function ReelStudioV8() {
                       )}
                     </div>
                   )}
+                  {config && (
+                    <MotionVarietyPanel
+                      animStyle={animStyle}
+                      setAnimStyle={(v) => { setAnimStyle(v); if (v === 'mix') setAnimSeed(Math.floor(Math.random() * 100000) + 1); }}
+                      transitionStyle={transitionStyle}
+                      setTransitionStyle={setTransitionStyle}
+                      cameraStyle={cameraStyle}
+                      setCameraStyle={setCameraStyle}
+                      onShuffle={shuffleDesign}
+                      diagramBoost={diagramBoost}
+                      setDiagramBoost={setDiagramBoost}
+                      onReplay={() => {
+                        // 지금 슬라이드를 처음부터 다시 재생해서 등장 효과 미리 보기
+                        if (currentSceneIdx < 0 || !config.scenes[currentSceneIdx]) return;
+                        const st = config.scenes[currentSceneIdx].startMs + 1;
+                        cancelAnimationFrame(rafRef.current);
+                        setElapsed(st);
+                        startRef.current = performance.now() - st;
+                        stopAtRef.current = Math.max(st, config.scenes[currentSceneIdx].endMs - 30);
+                        setIsPlaying(true);
+                        rafRef.current = requestAnimationFrame(tick);
+                      }}
+                      onPreviewMotion={() => downloadReelsMotionVideo({ preview: true })}
+                      disabled={pngBusy || vidBusy}
+                    />
+                  )}
                   <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', marginTop: 8 }}>
                     <button
                       onClick={downloadCurrentSlidePng}
@@ -15953,13 +18549,33 @@ export default function ReelStudioV8() {
                       {pngBusy ? `⚡ PNG 추출 중... (${pngProgress}%)` : '💻 전체 한번에 (PC용)'}
                     </button>
                     <button
+                      onClick={downloadReelsMotionVideo}
+                      disabled={!config || pngBusy || vidBusy}
+                      style={{ ...primaryBtn('#1a1a1a', !config || pngBusy || vidBusy), flex: '1 1 100%' }}
+                      title="글자·도식이 실제로 움직이는 영상(mp4) — 한 장씩 찍어서 만들어요">
+                      {vidBusy ? `⚡ 영상 만드는 중... (${vidProgress}%)${vidStage ? ' · ' + vidStage : ''}` : '🎬 움직이는 영상 (mp4)'}
+                    </button>
+                    <button
                       onClick={downloadReelsVideo}
                       disabled={!config || pngBusy || vidBusy}
-                      style={{ ...primaryBtn('#1a1a1a', !config || pngBusy || vidBusy), flex: '1 1 auto' }}
-                      title="슬라이드를 자동 재생하면서 영상으로 다운로드">
-                      {vidBusy ? `⚡ 영상 녹화 중... (${vidProgress}%)` : '🎬 릴스 영상 다운로드'}
+                      style={{
+                        flex: '1 1 100%', padding: '7px 10px', borderRadius: 8,
+                        background: '#fff', color: INK_SOFT, border: '1px solid #e5e5ea',
+                        fontSize: 11, fontWeight: 600, fontFamily: 'inherit',
+                        cursor: (!config || pngBusy || vidBusy) ? 'not-allowed' : 'pointer',
+                        opacity: (!config || pngBusy || vidBusy) ? 0.5 : 1,
+                      }}
+                      title="예전 방식 — 완성된 화면만 넘어가는 영상 (움직이는 영상이 안 될 때 사용)">
+                      사진 넘기기 영상 (예전 방식)
                     </button>
                   </div>
+                  {vidBusy && (
+                    <div style={{ fontSize: 10.5, color: INK_MUTE, lineHeight: 1.5, maxWidth: 480 }}>
+                      {vidKind === 'legacy'
+                        ? '영상 길이만큼 실제로 틀어 가며 녹화하는 중이에요. 이 창을 닫거나 다른 탭으로 옮기지 말아 주세요.'
+                        : '한 장씩 찍어서 만드는 중이라 30초 영상 기준 1~3분 정도 걸려요. 이 창을 닫거나 다른 탭으로 옮기지 말아 주세요.'}
+                    </div>
+                  )}
                   <div style={{ fontSize: 12, color: '#666', fontVariantNumeric: 'tabular-nums' }}>
                     {config ? `${(elapsed/1000).toFixed(1)} / ${config.actualDuration}.0s` : '0.0 / 0.0s'}
                     {config && currentSceneIdx >= 0 && (
@@ -16156,6 +18772,94 @@ export default function ReelStudioV8() {
 // ────────────────────────────────────────────────
 // 9) 인스타 안전 영역 래퍼 (하단 UI 가려짐 방지)
 // ────────────────────────────────────────────────
+// ────────────────────────────────────────────────
+// 움직임 · 다양성 패널 — 등장 효과 / 장면 전환 / 카메라 / 🎲 새 조합
+// (AI를 다시 부르지 않음 → 비용 없음)
+// ────────────────────────────────────────────────
+function MotionVarietyPanel({ animStyle, setAnimStyle, transitionStyle, setTransitionStyle, cameraStyle, setCameraStyle, onShuffle, onReplay, onPreviewMotion, disabled, diagramBoost, setDiagramBoost }) {
+  const [open, setOpen] = useState(false);
+  const chip = (active) => ({
+    padding: '5px 10px', borderRadius: 999,
+    border: `1px solid ${active ? PKD : '#ead5db'}`,
+    background: active ? PKD : '#fff',
+    color: active ? '#fff' : INK_SOFT,
+    fontSize: 11, fontWeight: 700, fontFamily: 'inherit',
+    cursor: disabled ? 'not-allowed' : 'pointer',
+    opacity: disabled ? 0.5 : 1,
+  });
+  const row = { display: 'flex', flexWrap: 'wrap', gap: 6, marginTop: 6 };
+  const lblS = { fontSize: 10.5, fontWeight: 800, color: PKD, letterSpacing: 0.3, marginTop: 10 };
+  const animLabel = (ANIM_STYLE_OPTIONS.find(o => o.id === animStyle) || {}).label || '자동';
+  const transLabel = (TRANSITION_OPTIONS.find(o => o.id === transitionStyle) || {}).label || '';
+  const camLabel = (CAMERA_OPTIONS.find(o => o.id === cameraStyle) || {}).label || '';
+  return (
+    <div style={{
+      width: '100%', maxWidth: 480, marginTop: 8,
+      background: '#fff', borderRadius: 10, border: `1px solid ${PK}`,
+      padding: '10px 14px',
+    }}>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        <button onClick={() => !disabled && onShuffle()} disabled={disabled}
+          style={{
+            padding: '8px 12px', borderRadius: 8, border: 'none',
+            background: `linear-gradient(135deg, ${PKD}, ${PK})`, color: '#fff',
+            fontSize: 12, fontWeight: 800, fontFamily: 'inherit',
+            cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1,
+            whiteSpace: 'nowrap',
+          }}
+          title="글은 그대로 두고 디자인·색·등장 효과·전환·카메라를 한 번에 새로 섞어요 (AI 비용 없음)">
+          🎲 새 조합
+        </button>
+        <div style={{ flex: 1, fontSize: 10.5, color: INK_MUTE, lineHeight: 1.45 }}>
+          등장 <b style={{ color: INK_SOFT }}>{animLabel}</b> · 전환 <b style={{ color: INK_SOFT }}>{transLabel}</b> · 카메라 <b style={{ color: INK_SOFT }}>{camLabel}</b>
+        </div>
+        <button onClick={() => setOpen(!open)}
+          style={{ padding: '6px 10px', borderRadius: 7, border: '1px solid #ead5db', background: '#fff', color: PKD, fontSize: 11, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit', whiteSpace: 'nowrap' }}>
+          {open ? '접기 ▲' : '직접 고르기 ▼'}
+        </button>
+      </div>
+      <label style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8, fontSize: 11, color: INK_SOFT, cursor: disabled ? 'not-allowed' : 'pointer' }}
+        title="도식 안의 작은 글씨를 휴대폰에서 읽히게 키워요. 다른 글자와 겹치거나 도식 밖으로 나가는 글자는 자동으로 덜 키우거나 원래 크기로 둬요.">
+        <input type="checkbox" checked={!!diagramBoost} disabled={disabled} onChange={(e) => setDiagramBoost && setDiagramBoost(e.target.checked)} style={{ accentColor: PKD }} />
+        도식 글씨 크게 <span style={{ color: INK_MUTE }}>(휴대폰에서 잘 보이게 · 겹치는 글자는 자동으로 원래대로)</span>
+      </label>
+      {open && (
+        <div>
+          <div style={lblS}>등장 효과 <span style={{ color: INK_MUTE, fontWeight: 500 }}>— 글자·도식이 나타나는 방식</span></div>
+          <div style={row}>
+            {ANIM_STYLE_OPTIONS.map(o => (
+              <button key={o.id} title={o.desc} disabled={disabled} onClick={() => setAnimStyle(o.id)} style={chip(animStyle === o.id)}>{o.label}</button>
+            ))}
+          </div>
+          <button onClick={onReplay} disabled={disabled}
+            style={{ marginTop: 6, padding: '4px 10px', borderRadius: 6, border: 'none', background: '#f5f5f7', color: INK_SOFT, fontSize: 10.5, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
+            ▶ 지금 슬라이드로 미리 보기
+          </button>
+          <div style={lblS}>장면 전환 <span style={{ color: INK_MUTE, fontWeight: 500 }}>— 움직이는 영상에 적용</span></div>
+          <div style={row}>
+            {TRANSITION_OPTIONS.map(o => (
+              <button key={o.id} disabled={disabled} onClick={() => setTransitionStyle(o.id)} style={chip(transitionStyle === o.id)}>{o.label}</button>
+            ))}
+          </div>
+          <div style={lblS}>카메라 움직임 <span style={{ color: INK_MUTE, fontWeight: 500 }}>— 움직이는 영상에 적용</span></div>
+          <div style={row}>
+            {CAMERA_OPTIONS.map(o => (
+              <button key={o.id} disabled={disabled} onClick={() => setCameraStyle(o.id)} style={chip(cameraStyle === o.id)}>{o.label}</button>
+            ))}
+          </div>
+          {onPreviewMotion && (
+            <button onClick={onPreviewMotion} disabled={disabled}
+              title="앞의 3장만 작게 만들어서 전환·카메라 움직임을 바로 보여 줘요 (파일은 저장 안 됨)"
+              style={{ marginTop: 8, padding: '6px 12px', borderRadius: 7, border: `1px solid ${PKD}`, background: '#fff', color: PKD, fontSize: 11, fontWeight: 800, cursor: disabled ? 'not-allowed' : 'pointer', opacity: disabled ? 0.5 : 1, fontFamily: 'inherit' }}>
+              🎞 전환·카메라 미리 보기 (앞 3장 · 저장 안 함)
+            </button>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function InstaFrameWrapper({ children }) {
   return (
     <div style={{
@@ -16849,9 +19553,13 @@ function PhotoDetails({ formInput, setFormInput, update }) {
 
   const handleFile = (i, file) => {
     if (!file || !file.type.startsWith('image/')) return;
-    if (file.size > 5 * 1024 * 1024) return;
+    if (file.size > 25 * 1024 * 1024) { try { window.alert('사진이 너무 커요 (25MB 이하로 넣어 주세요)'); } catch (e) {} return; }
     const reader = new FileReader();
-    reader.onload = (e) => updatePhoto(i, 'image', e.target.result);
+    reader.onload = async (e) => {
+      const img = await reelsShrinkDataUrl(e.target.result, file.type);
+      // 줄이는 사이에 적은 제목 등이 지워지지 않게 최신 값에 사진만 넣기
+      setFormInput(fi => ({ ...fi, photos: (fi.photos || []).map((ph, k) => (k === i ? { ...ph, image: img } : ph)) }));
+    };
     reader.readAsDataURL(file);
   };
 
@@ -16914,6 +19622,32 @@ function PhotoDetails({ formInput, setFormInput, update }) {
   );
 }
 
+// 휴대폰 원본 사진(수 MB)은 영상 만들 때 메모리를 많이 써서 아이폰이 멈출 수 있음
+// → 긴 쪽이 2048칸보다 크면 2048칸으로 줄여서 보관 (영상은 1080칸이라 화질 차이 없음)
+function reelsShrinkDataUrl(dataUrl, type) {
+  return new Promise((resolve) => {
+    try {
+      const im = new Image();
+      im.onload = () => {
+        try {
+          const MAX = 2048;
+          const big = Math.max(im.naturalWidth, im.naturalHeight);
+          if (!big || (big <= MAX && dataUrl.length < 2.5 * 1024 * 1024)) { resolve(dataUrl); return; }
+          const k = Math.min(1, MAX / big);
+          const c = document.createElement('canvas');
+          c.width = Math.max(1, Math.round(im.naturalWidth * k)); c.height = Math.max(1, Math.round(im.naturalHeight * k));
+          c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
+          const out = /png|gif|webp/.test(type || '') ? c.toDataURL('image/png') : c.toDataURL('image/jpeg', 0.9);
+          c.width = c.height = 0;
+          resolve(out && (big > MAX || out.length < dataUrl.length) ? out : dataUrl); // 픽셀이 크면 무조건 줄인 것 (메모리 기준)
+        } catch (e) { resolve(dataUrl); }
+      };
+      im.onerror = () => resolve(dataUrl); // 못 읽는 형식이면 원본 그대로
+      im.src = dataUrl;
+    } catch (e) { resolve(dataUrl); }
+  });
+}
+
 function MultiImageUploader({ imagePool, setImagePool, imageMode, setImageMode }) {
   const fileRef = useRef(null);
   const [err, setErr] = useState('');
@@ -16924,11 +19658,11 @@ function MultiImageUploader({ imagePool, setImagePool, imageMode, setImageMode }
     if (!files || files.length === 0) return;
     const valid = Array.from(files).filter(f => {
       if (!f.type.startsWith('image/')) return false;
-      if (f.size > 5 * 1024 * 1024) return false;
+      if (f.size > 25 * 1024 * 1024) return false; // 큰 사진은 아래에서 알맞은 크기로 줄여서 넣음
       return true;
     });
     if (valid.length === 0) {
-      setErr('이미지 파일만 첨부할 수 있어요 (각 5MB 이하)');
+      setErr('이미지 파일만 첨부할 수 있어요 (각 25MB 이하)');
       return;
     }
     if (valid.length < files.length) {
@@ -16941,12 +19675,12 @@ function MultiImageUploader({ imagePool, setImagePool, imageMode, setImageMode }
     // 모든 파일을 base64로 읽어서 추가
     const readers = valid.map(file => new Promise((resolve, reject) => {
       const r = new FileReader();
-      r.onload = (e) => resolve(e.target.result);
+      r.onload = (e) => resolve(reelsShrinkDataUrl(e.target.result, file.type));
       r.onerror = reject;
       r.readAsDataURL(file);
     }));
     Promise.all(readers).then(dataUrls => {
-      setImagePool([...imagePool, ...dataUrls]);
+      setImagePool(prev => [...(prev || []), ...dataUrls]); // 줄이는 동안 바뀐 목록도 반영
       setLoadingCount(0);
     }).catch(() => {
       setErr('이미지 읽기 실패');
@@ -17165,139 +19899,220 @@ function JsonForm({ jsonInput, setJsonInput, applyJson }) {
 }
 
 // ────────────────────────────────────────────────
+// 13-B) 등장 효과 (애니메이션) 종류 · 장면 전환 · 카메라 움직임
+// ────────────────────────────────────────────────
+// 'auto' = 기존처럼 톤에 맞춰 자동 / 'mix' = 슬라이드마다 다르게 섞기 / 나머지는 고정
+const ANIM_STYLE_OPTIONS = [
+  { id: 'auto',  label: '자동',      desc: '주제 톤에 맞게 (기존 방식)' },
+  { id: 'mix',   label: '🎲 섞기',   desc: '슬라이드마다 다른 효과' },
+  { id: 'soft',  label: '스르륵',    desc: '부드럽게 떠오르기' },
+  { id: 'punch', label: '톡',        desc: '튕기듯 강하게' },
+  { id: 'pop',   label: '뿅',        desc: '작았다가 커지며 튀어나오기' },
+  { id: 'rise',  label: '쑥',        desc: '아래에서 크게 올라오기' },
+  { id: 'drop',  label: '툭',        desc: '위에서 떨어지기' },
+  { id: 'slide', label: '슥',        desc: '왼쪽에서 밀려오기' },
+  { id: 'sideR', label: '슥(오른쪽)', desc: '오른쪽에서 밀려오기' },
+  { id: 'swing', label: '흔들',      desc: '기울어졌다 바로 서기' },
+  { id: 'zoom',  label: '줌',        desc: '크게 흐릿했다가 또렷하게' },
+  { id: 'calm',  label: '차분',      desc: '천천히 은은하게' },
+];
+const ANIM_MIX_POOL = ['soft', 'punch', 'pop', 'rise', 'drop', 'slide', 'sideR', 'swing', 'zoom', 'calm'];
+
+// 영상 장면 전환 (움직이는 영상에만 적용)
+const TRANSITION_OPTIONS = [
+  { id: 'fade',    label: '페이드' },
+  { id: 'cut',     label: '바로 넘김' },
+  { id: 'slideUp', label: '위로 밀기' },
+  { id: 'slideL',  label: '옆으로 밀기' },
+  { id: 'zoomIn',  label: '확대' },
+  { id: 'wipe',    label: '닦아내기' },
+  { id: 'mix',     label: '🎲 섞기' },
+];
+const TRANSITION_MIX_POOL = ['fade', 'slideUp', 'slideL', 'zoomIn', 'wipe'];
+
+// 카메라 움직임 (움직이는 영상에만 적용) — 화면 전체가 천천히 다가가거나 멀어짐
+const CAMERA_OPTIONS = [
+  { id: 'breathe', label: '숨쉬듯 번갈아' },
+  { id: 'in',      label: '천천히 다가가기' },
+  { id: 'out',     label: '천천히 멀어지기' },
+  { id: 'none',    label: '고정' },
+];
+
+// 숫자 씨앗 → 0~1 사이 고정 난수 (같은 씨앗이면 항상 같은 결과)
+function seededRand(seed, n) {
+  let x = Math.sin((seed + 1) * 9301 + (n + 1) * 49297) * 233280;
+  return x - Math.floor(x);
+}
+
+function resolveAnimKind(animStyle, toneId, seed, sceneIdx) {
+  if (animStyle && animStyle !== 'auto' && animStyle !== 'mix') return animStyle;
+  if (animStyle === 'mix') {
+    const i = Math.floor(seededRand(seed || 0, Math.max(0, sceneIdx || 0)) * ANIM_MIX_POOL.length);
+    return ANIM_MIX_POOL[i];
+  }
+  // 자동 — 기존 톤 매핑 그대로
+  if (toneId === 'action') return 'punch';
+  if (toneId === 'warm' || toneId === 'coral' || toneId === 'mint') return 'softWarm';
+  if (toneId === 'insight' || toneId === 'sand') return 'slide';
+  if (toneId === 'dusty' || toneId === 'moss' || toneId === 'plum') return 'calm';
+  return 'soft';
+}
+
+function getAnimPreset(kind, isShortScene) {
+  const S = isShortScene;
+  switch (kind) {
+    // ── 기존 프리셋 (값 그대로 유지) ──
+    case 'punch': // 강렬·위기·임팩트 → 빠르고 강한 등장 + 블러 해제
+      return { kind: 'punch', baseDur: S ? 0.32 : 0.55, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', translateY: 24, scale: 0.88, blur: 8, rotate: 0 };
+    case 'softWarm': // 부드러운·시선·연결 → 천천히 우아하게
+      return { kind: 'soft', baseDur: S ? 0.5 : 1.1, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', translateY: 12, scale: 0.94, blur: 4, rotate: 0 };
+    case 'slide': // 데이터·정밀 → 측면 슬라이드
+      return { kind: 'slide', baseDur: S ? 0.4 : 0.85, easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', translateX: 16, translateY: 0, scale: 1, blur: 0, rotate: 0 };
+    case 'calm': // 자기조절·정서 → 페이드 + 미세 회전
+      return { kind: 'calm', baseDur: S ? 0.5 : 1.2, easing: 'ease-out', translateY: 6, scale: 1, blur: 2, rotate: -1 };
+    // ── 새 프리셋 ──
+    case 'pop':
+      return { kind: 'pop', baseDur: S ? 0.35 : 0.5, easing: 'cubic-bezier(0.34, 1.7, 0.64, 1)', translateY: 0, scale: 0.55, blur: 0, rotate: 0 };
+    case 'rise':
+      return { kind: 'rise', baseDur: S ? 0.45 : 0.8, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', translateY: 70, scale: 1, blur: 0, rotate: 0 };
+    case 'drop':
+      return { kind: 'drop', baseDur: S ? 0.4 : 0.7, easing: 'cubic-bezier(0.34, 1.45, 0.64, 1)', translateY: -45, scale: 1, blur: 0, rotate: 0 };
+    case 'sideR':
+      return { kind: 'sideR', baseDur: S ? 0.4 : 0.75, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', translateX: -48, translateY: 0, scale: 1, blur: 0, rotate: 0 };
+    case 'swing':
+      return { kind: 'swing', baseDur: S ? 0.45 : 0.8, easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', translateX: 22, translateY: 8, scale: 0.96, blur: 0, rotate: -7 };
+    case 'zoom':
+      return { kind: 'zoom', baseDur: S ? 0.45 : 0.75, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', translateY: 0, scale: 1.3, blur: 6, rotate: 0 };
+    case 'soft':
+    default: // general 등 기본
+      return { kind: 'soft', baseDur: S ? 0.4 : 0.9, easing: 'cubic-bezier(0.16, 1, 0.3, 1)', translateY: 14, scale: 0.94, blur: 3, rotate: 0 };
+  }
+}
+
+// CSS 이징 문자열을 직접 계산 (영상 프레임 모드용)
+function evalEasing(easing, t) {
+  if (t <= 0) return 0;
+  if (t >= 1) return 1;
+  let p = null;
+  if (easing === 'ease-out') p = [0, 0, 0.58, 1];
+  else if (easing === 'ease-in') p = [0.42, 0, 1, 1];
+  else if (easing === 'ease-in-out') p = [0.42, 0, 0.58, 1];
+  else if (easing === 'ease') p = [0.25, 0.1, 0.25, 1];
+  else if (easing === 'linear') return t;
+  else {
+    const m = /cubic-bezier\(([^)]+)\)/.exec(easing || '');
+    if (m) p = m[1].split(',').map(Number);
+  }
+  if (!p || p.length !== 4 || p.some(v => !Number.isFinite(v))) return t;
+  const [x1, y1, x2, y2] = p;
+  const bx = (s) => 3 * (1 - s) * (1 - s) * s * x1 + 3 * (1 - s) * s * s * x2 + s * s * s;
+  const by = (s) => 3 * (1 - s) * (1 - s) * s * y1 + 3 * (1 - s) * s * s * y2 + s * s * s;
+  // x(s) = t 인 s를 이분법으로 찾기
+  let lo = 0, hi = 1, s = t;
+  for (let i = 0; i < 30; i++) {
+    s = (lo + hi) / 2;
+    if (bx(s) < t) lo = s; else hi = s;
+  }
+  return by(s);
+}
+
+// ────────────────────────────────────────────────
 // 14) Frame (v5 + v7 융합)
 // ────────────────────────────────────────────────
-function Frame({ style, config, currentScene, currentSceneIdx, selectedField, setSelectedField, editMode, sceneElapsed, progress, theme, tone, setSceneToneArtOverride, contentEditMode, onContentChange }) {
+function Frame({ style, config, currentScene, currentSceneIdx, selectedField, setSelectedField, editMode, sceneElapsed, progress, theme, tone, setSceneToneArtOverride, contentEditMode, onContentChange, animStyle = 'auto', animSeed = 0 }) {
   const sceneDur = currentScene ? (currentScene.endMs - currentScene.startMs) : 7000;
   const isShortScene = sceneDur < 4500;
   const sf = isShortScene ? 0.4 : 1;
 
+  // 영상 프레임 모드: 움직이는 영상(mp4)을 한 장씩 찍을 때 켜짐.
+  // 이때는 CSS 트랜지션 대신 "지금 몇 초인지"로 위치·투명도를 직접 계산해서
+  // 시간을 멈춘 상태로도 애니메이션 중간 모습을 정확히 찍을 수 있다.
+  const frameMode = typeof window !== 'undefined' && !!window.__reelsFrameMode;
+
   // 톤별 애니메이션 프리셋 — 주제 분위기에 맞게 등장 방식 다르게
+  // (등장 효과를 '자동'으로 두면 기존과 똑같이 톤에 따라 정해짐)
   const toneId = tone?.id || 'general';
-  const animPreset = (() => {
-    // 강렬·위기·임팩트 → 빠르고 강한 등장 + 블러 해제 효과
-    if (toneId === 'action') {
-      return {
-        kind: 'punch',
-        baseDur: isShortScene ? 0.32 : 0.55,
-        easing: 'cubic-bezier(0.34, 1.56, 0.64, 1)', // 살짝 튕기는 spring
-        translateY: 24,
-        scale: 0.88,
-        blur: 8, // 흐릿하게 시작 → 또렷해짐
-        rotate: 0,
-      };
+  const kind = resolveAnimKind(animStyle, toneId, animSeed, currentSceneIdx);
+  const animPreset = getAnimPreset(kind, isShortScene);
+
+  // 등장 시작 상태(from) → 최종 상태(0) 로 보간한 스타일
+  const fromState = (scaleOnly) => {
+    if (scaleOnly) {
+      const sc = animPreset.kind === 'punch' ? 0.82 : (animPreset.scale == null ? 1 : animPreset.scale); // 기존 값 그대로
+      return { tx: 0, ty: 0, sc, rot: 0, blur: 0 };
     }
-    // 부드러운·시선·연결 → 천천히 우아하게
-    if (toneId === 'warm' || toneId === 'coral' || toneId === 'mint') {
-      return {
-        kind: 'soft',
-        baseDur: isShortScene ? 0.5 : 1.1,
-        easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-        translateY: 12,
-        scale: 0.94,
-        blur: 4, // 약한 블러
-        rotate: 0,
-      };
-    }
-    // 데이터·정밀·임상 → 측면 슬라이드 + 살짝 회전 (정밀 타이핑 느낌)
-    if (toneId === 'insight' || toneId === 'sand') {
-      return {
-        kind: 'slide',
-        baseDur: isShortScene ? 0.4 : 0.85,
-        easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)', // 정확한 정착
-        translateX: 16,
-        translateY: 0,
-        scale: 1,
-        blur: 0,
-        rotate: 0,
-      };
-    }
-    // 자기조절·정서·차분 → 페이드 + 미세 회전 (부유하는 느낌)
-    if (toneId === 'dusty' || toneId === 'moss' || toneId === 'plum') {
-      return {
-        kind: 'calm',
-        baseDur: isShortScene ? 0.5 : 1.2,
-        easing: 'ease-out',
-        translateY: 6,
-        scale: 1,
-        blur: 2,
-        rotate: -1, // 살짝 기울었다 똑바로
-      };
-    }
-    // general 등 기본
     return {
-      kind: 'soft',
-      baseDur: isShortScene ? 0.4 : 0.9,
-      easing: 'cubic-bezier(0.16, 1, 0.3, 1)',
-      translateY: 14,
-      scale: 0.94,
-      blur: 3,
-      rotate: 0,
+      tx: animPreset.translateX ? -animPreset.translateX : 0,
+      ty: animPreset.translateY || 0,
+      // 기존 'soft'(기본·따뜻한 톤)는 원래 fadeUp에서 크기 변화가 없었음 → 그대로 유지
+      sc: animPreset.kind === 'soft' ? 1 : (animPreset.scale == null ? 1 : animPreset.scale),
+      rot: animPreset.rotate || 0,
+      blur: animPreset.blur || 0,
     };
-  })();
+  };
+  const buildTransform = (st) => {
+    const parts = [];
+    if (st.tx || st.ty) parts.push(`translate(${st.tx.toFixed(2)}px, ${st.ty.toFixed(2)}px)`);
+    if (st.sc !== 1) parts.push(`scale(${st.sc.toFixed(4)})`);
+    if (st.rot) parts.push(`rotate(${st.rot.toFixed(2)}deg)`);
+    return parts.length ? parts.join(' ') : 'none';
+  };
+  // 프레임 모드용: delay(ms) 이후 baseDur 동안의 진행도(0→1, 이징 적용)
+  const progressAt = (delay) => {
+    const start = delay * sf;
+    const durMs = animPreset.baseDur * 1000;
+    const raw = Math.max(0, Math.min(1, ((sceneElapsed || 0) - start) / durMs));
+    return { raw, eased: evalEasing(animPreset.easing, raw) };
+  };
+  const framedStyle = (delay, scaleOnly) => {
+    // 미리보기에서 처음부터(지연 0) 떠 있는 것은 영상에서도 처음부터 그대로 (사진이 깜빡 튀어나오지 않게)
+    if (!delay) return { opacity: 1, transform: 'none', filter: 'none', transition: 'none' };
+    const { raw, eased } = progressAt(delay);
+    const f = fromState(scaleOnly);
+    const k = 1 - eased; // 남은 비율 (스프링 이징이면 살짝 넘쳤다 돌아옴)
+    const st = { tx: f.tx * k, ty: f.ty * k, sc: 1 + (f.sc - 1) * k, rot: f.rot * k, blur: Math.max(0, f.blur * k) };
+    return {
+      opacity: Math.max(0, Math.min(1, raw < 1 ? evalEasing('ease-out', raw) : 1)),
+      transform: buildTransform(st),
+      filter: st.blur > 0.05 ? `blur(${st.blur.toFixed(2)}px)` : 'none',
+      transition: 'none',
+    };
+  };
 
   const fadeUp = (delay) => {
+    if (frameMode) return framedStyle(delay, false);
     // sceneElapsed가 없거나 0이면 (정지 상태 또는 첫 프레임) 모두 보임
     // 그래야 LAYOUT 바꾸자마자 결과가 보임
     const shown = (typeof window !== 'undefined' && window.__reelsCapturing) || !sceneElapsed || sceneElapsed >= delay * sf;
-    const blur = animPreset.blur || 0;
-    const rotate = animPreset.rotate || 0;
-
-    if (animPreset.kind === 'slide') {
-      return {
-        opacity: shown ? 1 : 0,
-        transform: shown ? 'translateX(0)' : `translateX(-${animPreset.translateX}px)`,
-        filter: shown ? 'blur(0)' : `blur(${blur}px)`,
-        transition: `all ${animPreset.baseDur}s ${animPreset.easing}`,
-      };
-    }
-    if (animPreset.kind === 'punch') {
-      // 강한 등장 — 블러 해제 + 큰 거리 + spring
-      return {
-        opacity: shown ? 1 : 0,
-        transform: shown ? 'translateY(0) scale(1)' : `translateY(${animPreset.translateY}px) scale(${animPreset.scale})`,
-        filter: shown ? 'blur(0)' : `blur(${blur}px)`,
-        transition: `all ${animPreset.baseDur}s ${animPreset.easing}`,
-      };
-    }
-    if (animPreset.kind === 'calm') {
-      // 부유하는 느낌 — 미세 회전 + 페이드
-      return {
-        opacity: shown ? 1 : 0,
-        transform: shown
-          ? 'translateY(0) rotate(0deg)'
-          : `translateY(${animPreset.translateY}px) rotate(${rotate}deg)`,
-        filter: shown ? 'blur(0)' : `blur(${blur}px)`,
-        transition: `all ${animPreset.baseDur}s ${animPreset.easing}`,
-      };
-    }
-    // 기본 soft — 부드러운 블러 + 슬라이드업
+    const f = fromState(false);
     return {
       opacity: shown ? 1 : 0,
-      transform: shown ? 'translateY(0)' : `translateY(${animPreset.translateY}px)`,
-      filter: shown ? 'blur(0)' : `blur(${blur}px)`,
+      transform: shown ? 'none' : buildTransform(f),
+      filter: shown ? 'blur(0)' : `blur(${f.blur}px)`,
       transition: `all ${animPreset.baseDur}s ${animPreset.easing}`,
     };
   };
 
-  const fadeIn = (delay) => ({
-    opacity: (!sceneElapsed || sceneElapsed >= delay * sf) ? 1 : 0,
-    transition: `opacity ${animPreset.baseDur}s ease-out`,
-  });
-
-  const scaleIn = (delay) => {
-    const shown = (typeof window !== 'undefined' && window.__reelsCapturing) || !sceneElapsed || sceneElapsed >= delay * sf;
-    // action 톤은 더 임팩트 있는 스케일 (커졌다 작아짐 효과)
-    if (animPreset.kind === 'punch') {
-      return {
-        opacity: shown ? 1 : 0,
-        transform: shown ? 'scale(1)' : 'scale(0.82)',
-        transition: `all ${animPreset.baseDur}s ${animPreset.easing}`,
-      };
+  const fadeIn = (delay) => {
+    if (frameMode) {
+      if (!delay) return { opacity: 1, transition: 'none' };
+      const { raw } = progressAt(delay);
+      return { opacity: evalEasing('ease-out', raw), transition: 'none' };
     }
+    const shown = (typeof window !== 'undefined' && window.__reelsCapturing) || !sceneElapsed || sceneElapsed >= delay * sf;
     return {
       opacity: shown ? 1 : 0,
-      transform: shown ? 'scale(1)' : `scale(${animPreset.scale})`,
+      transition: `opacity ${animPreset.baseDur}s ease-out`,
+    };
+  };
+
+  const scaleIn = (delay) => {
+    if (frameMode) return framedStyle(delay, true);
+    const shown = (typeof window !== 'undefined' && window.__reelsCapturing) || !sceneElapsed || sceneElapsed >= delay * sf;
+    const f = fromState(true);
+    return {
+      opacity: shown ? 1 : 0,
+      transform: shown ? 'scale(1)' : `scale(${f.sc})`,
       transition: `all ${animPreset.baseDur}s ${animPreset.easing}`,
     };
   };
@@ -17313,9 +20128,11 @@ function Frame({ style, config, currentScene, currentSceneIdx, selectedField, se
       boxShadow: '0 10px 40px rgba(0,0,0,0.12)',
       fontFamily: theme.font,
     }}>
+        {!frameMode && (
         <div style={{ position: 'absolute', top: 0, left: 0, right: 0, height: 3, background: 'rgba(0,0,0,0.06)', zIndex: 100 }}>
           <div style={{ height: '100%', width: `${progress}%`, background: theme.primary, transition: 'width 0.1s linear' }}/>
         </div>
+        )}
       <Decorations theme={theme} currentScene={currentScene}/>
 
       {/* 상단 Pill 배지 (v5 스타일 + 워터마크) */}
@@ -18080,7 +20897,9 @@ function ClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, edi
           // 편집 모드에서는 자식이 클릭 이벤트 가로채지 않게 (부모 EditableText가 받음)
           pointerEvents: editMode ? 'none' : 'auto',
         }}>
-          <ToneArt tone={localTone} kind={scene.kind} data={{ ...scene.clinicalData, head: scene.head, userTopic: scene.userTopic || '', toneArtOverride: scene.toneArtOverride || null }}/>
+          <DiagramTextBoost>
+            <ToneArt tone={localTone} kind={scene.kind} data={{ ...scene.clinicalData, head: scene.head, userTopic: scene.userTopic || '', toneArtOverride: scene.toneArtOverride || null }}/>
+          </DiagramTextBoost>
         </div>
 
         {/* 도식 변경 버튼 — 편집 모드 아닐 때만 표시 (인터랙션 충돌 방지) */}
@@ -19727,7 +22546,15 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
   const { fadeUp, fadeIn, scaleIn } = anim;
   const lang = theme._layout || LAYOUT_LANGUAGES.editorial;
   const layoutId = lang.id;
-  const numSize = Math.round(getBigNumberSize(scene.number) * lang.headSizeMultiplier);
+  let numSize = Math.round(getBigNumberSize(scene.number) * lang.headSizeMultiplier);
+  {
+    // 숫자 자리에 한글 글(예: "추천 대상")이 들어오면 카드 폭을 넘어 잘렸음 → 한글이 있을 때만 폭에 맞춰 줄임 (숫자만 있으면 예전 그대로)
+    const s0 = stripMarkup(String(scene.number || ''));
+    if (/[가-힣]/.test(s0)) {
+      const em = Array.from(s0).reduce((a, ch) => a + (/[가-힣ㄱ-ㅎㅏ-ㅣ一-龥]/.test(ch) ? 1 : ch === ' ' ? 0.3 : 0.62), 0);
+      numSize = Math.min(numSize, Math.floor(320 / (Math.max(1, em) * 1.25)));
+    }
+  }
   const labelSize = Math.round(getHeadSize(scene.label, 'cta', 22) * lang.subSizeMultiplier);
   const iconName = scene.icon || suggestIconForText(scene.label);
   const hasImage = !!scene.image;
@@ -22100,8 +24927,9 @@ function CtaScene({ scene, sceneIndex, selectedField, setSelectedField, editMode
           element="div"
           style={{
             ...fadeIn(0),
-            fontSize: Math.round(L.headSize * getFS('centerName')), fontWeight: L.headWeight,
-            color: theme.text, letterSpacing: L.headLetter, marginBottom: 8,
+            // 센터 이름이 한 줄에 다 들어가도록 (포스터 디자인처럼 제목이 큰 디자인에서 두 줄로 겹쳐 보이던 문제)
+            fontSize: Math.round(Math.min(L.headSize, Math.floor(330 / Math.max(1, Array.from(String(scene.centerName)).reduce((a, ch) => a + (/[가-힣]/.test(ch) ? 1.02 : ch === ' ' ? 0.3 : 0.68), 0)))) * getFS('centerName')), fontWeight: L.headWeight,
+            color: theme.text, letterSpacing: L.headLetter, marginBottom: 8, lineHeight: 1.25, wordBreak: 'keep-all',
             position: 'relative', zIndex: 1,
           }}>
           {parts.map((p, i) => p === 'ABA' ? <span key={i} style={{ color: theme.primary }}>{p}</span> : <span key={i}>{p}</span>)}
