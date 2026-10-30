@@ -13738,6 +13738,23 @@ function dsLoadFontCss() {
 // ── 색 ──────────────────────────────────────────────────────────────
 const DS_HEX = /^#([0-9a-f]{3}|[0-9a-f]{4}|[0-9a-f]{6}|[0-9a-f]{8})$/i;
 const DS_RGBA = /^rgba?\(\s*[\d.]+\s*,\s*[\d.]+\s*,\s*[\d.]+\s*(,\s*[\d.]+\s*)?\)$/i;
+// 색의 밝기 (0 어두움 ~ 1 밝음). 모르는 색이면 0.5
+function dsLum(c) {
+  try {
+    let r, g, b;
+    const h = String(c || '').trim();
+    let m = h.match(/^#([0-9a-f]{3,8})$/i);
+    if (m) {
+      let x = m[1];
+      if (x.length <= 4) x = x.split('').map(ch => ch + ch).join('');
+      r = parseInt(x.slice(0, 2), 16); g = parseInt(x.slice(2, 4), 16); b = parseInt(x.slice(4, 6), 16);
+    } else if ((m = h.match(/^rgba?\(\s*([\d.]+)[\s,]+([\d.]+)[\s,]+([\d.]+)/i))) {
+      r = +m[1]; g = +m[2]; b = +m[3];
+    } else return 0.5;
+    const f = (v) => { v /= 255; return v <= 0.03928 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+  } catch (e) { return 0.5; }
+}
 function dsColor(c, spec, fallback) {
   if (c == null || c === '') return fallback;
   if (typeof c !== 'string') return fallback;
@@ -14020,8 +14037,13 @@ function dsDrawText(ctx, el, spec, st) {
   const align = el.align || 'left';
   const color = dsColor(el.color, spec, dsColor('ink', spec, '#222222'));
   const hl = dsColor(el.hl, spec, dsColor('accent', spec, '#ff6b4a'));
-  const hlStyle = el.hlStyle || 'color';
+  let hlStyle = el.hlStyle || 'color';
   const hlBg = dsColor(el.hlBg, spec, dsColor('soft', spec, 'rgba(255,220,120,0.7)'));
+  // 형광펜은 글자 아래쪽 절반만 칠해서, 진한 형광펜에 흰 글자를 고르면 윗부분이 안 보임 → 그럴 땐 글자 전체를 덮는 상자로
+  if (hlStyle === 'marker') {
+    const emText = el.hlText ? dsColor(el.hlText, spec, color) : color;
+    if (dsLum(emText) > 0.7 && dsLum(hlBg) < 0.45) hlStyle = 'box';
+  }
   ctx.font = dsFontStr(lay.fam, lay.weight, lay.size);
   ctx.textBaseline = 'alphabetic';
   if (el.shadow) dsShadow(ctx, el.shadow, el.shadowColor ? dsColor(el.shadowColor, spec) : 'rgba(0,0,0,0.28)');
@@ -22697,7 +22719,7 @@ function CheckItemScene({ scene, sceneIndex, selectedField, setSelectedField, ed
         </div>
         {/* 우측 본문 */}
         <div style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: '62%',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: '62%', boxSizing: 'border-box', // 안쪽 여백이 왼쪽 색 영역까지 밀고 들어가지 않게
           padding: '90px 22px 90px 22px',
           display: 'flex', alignItems: 'center',
         }}>
@@ -23384,7 +23406,7 @@ function QuoteScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
         </div>
         {/* 우측 본문 */}
         <div style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: '68%',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: '68%', boxSizing: 'border-box', // 안쪽 여백이 왼쪽 색 영역까지 밀고 들어가지 않게
           padding: '90px 22px 90px 22px',
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
         }}>
@@ -23706,7 +23728,7 @@ function CompareScene({ scene, sceneIndex, selectedField, setSelectedField, edit
         {/* 좌측 (X) */}
         <div style={{
           ...fadeIn(200),
-          position: 'absolute', top: 0, left: 0, bottom: 0, width: '50%',
+          position: 'absolute', top: 0, left: 0, bottom: 0, width: '50%', boxSizing: 'border-box',
           background: theme.bg === '#0F1929' ? `${theme.text}08` : `${theme.textMute}10`,
           padding: '90px 14px 90px 22px',
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
@@ -23743,7 +23765,7 @@ function CompareScene({ scene, sceneIndex, selectedField, setSelectedField, edit
         {/* 우측 (✓) */}
         <div style={{
           ...fadeUp(700),
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: '50%',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: '50%', boxSizing: 'border-box', // 안쪽 여백이 왼쪽 색 영역까지 밀고 들어가지 않게
           background: theme.primarySoft || theme.surface,
           padding: '90px 22px 90px 14px',
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
@@ -24686,7 +24708,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         </div>
         {/* 우측 본문 */}
         <div style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: '66%',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: '66%', boxSizing: 'border-box', // 안쪽 여백이 왼쪽 색 영역까지 밀고 들어가지 않게
           padding: '95px 20px 90px 20px',
           display: 'flex', flexDirection: 'column', justifyContent: 'flex-start',
           gap: 14,
@@ -25084,7 +25106,7 @@ function PhotoScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
         }}/>
         {/* 우측 텍스트 */}
         <div style={{
-          position: 'absolute', top: 0, right: 0, bottom: 0, width: '52%',
+          position: 'absolute', top: 0, right: 0, bottom: 0, width: '52%', boxSizing: 'border-box', // 안쪽 여백이 왼쪽 색 영역까지 밀고 들어가지 않게
           background: theme.primarySoft || theme.bg,
           padding: '90px 18px 90px 22px',
           display: 'flex', flexDirection: 'column', justifyContent: 'center',
