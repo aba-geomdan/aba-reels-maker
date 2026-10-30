@@ -909,6 +909,78 @@ const isMobileDevice = () => {
 //    Edge Function 이름은 'claude-relay' 로 만들 예정입니다.
 const SUPABASE_PROJECT = 'vdubgrxwijydwfabwpnk';
 const SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZkdWJncnh3aWp5ZHdmYWJ3cG5rIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MDk1ODgsImV4cCI6MjA5NzE4NTU4OH0.nqNO3vany3M6fzmG5BG6QVdvi8BW2UbhTDhxNnwvA88';
+// ─── 저장 속도: 캡처할 때 "지금 화면에 쓰인 글꼴 조각"만 복사본에 넘기기 ───
+// 저장할 때마다 화면을 복사본으로 만들어 찍는데, 예전엔 앱이 불러 둔 글꼴 목록(수천 개)을
+// 통째로 복사본에 다시 읽혀서 한 장 찍는 데 1~5초씩 걸렸음 → 그 화면 글자에 필요한 조각만 넘김.
+const capFontCache = { fams: new Set(), cps: new Set(), sheets: new WeakMap(), links: new Set(), ready: false };
+function capParseRanges(txt) {
+  if (!txt) return null;
+  return txt.split(',').map(r => r.trim().replace(/^U\+/i, '')).filter(Boolean).map(r => {
+    if (r.includes('?')) return [parseInt(r.replace(/\?/g, '0'), 16), parseInt(r.replace(/\?/g, 'f'), 16)];
+    const [a, b] = r.split('-');
+    const lo = parseInt(a, 16), hi = b ? parseInt(b, 16) : lo;
+    return [lo, hi];
+  }).filter(x => Number.isFinite(x[0]) && Number.isFinite(x[1]));
+}
+function capPrepareFonts(node) {
+  try {
+    if (typeof document === 'undefined' || !node) return null;
+    const C = capFontCache;
+    const norm = (f) => f.trim().replace(/^['"]|['"]$/g, '').toLowerCase();
+    let grew = !C.ready;
+    if (!C.ready) {
+      for (let c = 0x20; c <= 0x7e; c++) C.cps.add(c); // 숫자·영문·문장부호는 늘 포함
+      [0xb7, 0x2022, 0x2014, 0x2026, 0x201c, 0x201d, 0x2018, 0x2019, 0x2192, 0x2713, 0x25cf, 0x25cb].forEach(c => C.cps.add(c));
+    }
+    const els = [node, ...node.querySelectorAll('*')];
+    for (const el of els) {
+      try { getComputedStyle(el).fontFamily.split(',').forEach(f => { const k = norm(f); if (!C.fams.has(k)) { C.fams.add(k); grew = true; } }); } catch (e) {}
+    }
+    for (const ch of (node.textContent || '')) { const c = ch.codePointAt(0); if (!C.cps.has(c)) { C.cps.add(c); grew = true; } }
+    // 글꼴 목록 읽기 (목록마다 한 번만 풀어 둠)
+    const sheetsNow = [];
+    for (const sheet of Array.from(document.styleSheets)) {
+      const owner = sheet.ownerNode;
+      if (!owner || owner.tagName !== 'LINK') continue;
+      let parsed = C.sheets.get(sheet);
+      if (parsed === undefined) {
+        parsed = null;
+        try {
+          const all = Array.from(sheet.cssRules || []);
+          if (all.length && all.every(r => r.type === 5)) { // 글꼴 정의만 있는 목록만 다룸 (5 = @font-face)
+            const base = sheet.href || document.baseURI;
+            parsed = all.map(r => ({
+              fam: norm(r.style.getPropertyValue('font-family') || ''),
+              ranges: capParseRanges(r.style.getPropertyValue('unicode-range')),
+              css: r.cssText.replace(/url\((['"]?)([^'")]+)\1\)/g, (m, q, u) => { try { return `url("${new URL(u, base).href}")`; } catch (e) { return m; } }),
+            }));
+          }
+        } catch (e) { parsed = null; } // 못 읽는 목록은 예전처럼 통째로 둠
+        C.sheets.set(sheet, parsed);
+        if (parsed) grew = true;
+      }
+      if (parsed) sheetsNow.push({ owner, parsed });
+    }
+    if (!sheetsNow.length) return null;
+    C.links = new Set(sheetsNow.map(x => x.owner));
+    if (grew) {
+      const cps = [...C.cps].sort((x, y) => x - y);
+      const hit = (lo, hi) => { let l = 0, h = cps.length - 1; while (l <= h) { const m = (l + h) >> 1; if (cps[m] < lo) l = m + 1; else if (cps[m] > hi) h = m - 1; else return true; } return false; };
+      const rules = [];
+      for (const { parsed } of sheetsNow) for (const e of parsed) {
+        if (!C.fams.has(e.fam)) continue;
+        if (e.ranges && e.ranges.length && !e.ranges.some(([lo, hi]) => hit(lo, hi))) continue;
+        rules.push(e.css);
+      }
+      let st = document.getElementById('reels-cap-fonts');
+      if (!st) { st = document.createElement('style'); st.id = 'reels-cap-fonts'; document.head.appendChild(st); }
+      st.textContent = rules.join('\n');
+      C.ready = true;
+    }
+    return C;
+  } catch (e) { return null; }
+}
+
 const LLM_RELAY_URL = `https://${SUPABASE_PROJECT}.supabase.co/functions/v1/claude-relay`;
 
 const callLLM = async (prompt) => {
@@ -16977,7 +17049,10 @@ export default function ReelStudioV8() {
     const h = Math.max(1, Math.round(rect.height));
     // 인스타 규격(가로 1080칸)에 딱 맞게 찍기 — 작은 미리보기를 찍어서 늘리면 흐려짐
     const scale = opts.scale || (1080 / w);
+    const capFonts = capPrepareFonts(node);
     return await window.html2canvas(node, {
+      // 큰 글꼴 목록은 복사본에서 빼고, 위에서 골라 둔 조각(reels-cap-fonts)만 쓰게 함
+      ignoreElements: (el) => !!(capFonts && capFonts.links.has(el)),
       backgroundColor: '#ffffff',
       scale,
       useCORS: true,
@@ -17397,8 +17472,9 @@ export default function ReelStudioV8() {
     // 화면이 계속 바뀌는 동안 몇 프레임마다 새로 찍을지 (아이폰은 메모리가 적어서 조금 더 띄엄띄엄)
     const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     const isTouch = typeof window !== 'undefined' && ('ontouchstart' in window) && navigator.maxTouchPoints > 0;
-    // 컴퓨터는 매 프레임 새로 찍어 글자 움직임도 30fps로 부드럽게, 휴대폰은 메모리·시간 때문에 띄엄띄엄
-    const CAPTURE_GAP = isIOS ? 3 : (isTouch ? 2 : 1);
+    // 글자 움직임은 2프레임마다 새로 찍기 (초당 15장 — 눈으로는 부드러움, 저장 시간은 절반). 카메라·전환은 그대로 30fps.
+    // 아이폰은 메모리가 적어서 3프레임마다
+    const CAPTURE_GAP = isIOS ? 3 : 2;
     const CAM = 0.04;         // 카메라 확대 정도 (4%)
 
     const drawZoomed = (c, img, zoom, dx = 0, dy = 0, alpha = 1) => {
