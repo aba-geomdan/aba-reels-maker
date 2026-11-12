@@ -2050,13 +2050,14 @@ const ReplacementDiagram = ({ tone, data }) => {
     <text x={150} y={14} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={tone.accentDeep} fontWeight="600" letterSpacing="2">
       {title}
     </text>
-    <rect x={20} y={36} width={100} height={50} rx={8} fill="#FFF" stroke={tone.accentDeep} strokeWidth="1" strokeDasharray="4 3"/>
-    <text x={70} y={58} textAnchor="middle" fontSize="11" fontFamily="Pretendard" fontWeight="600" fill={tone.accentDeep}>{problem}</text>
-    <text x={70} y={74} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={INK_MUTE}>{problemSub}</text>
-    <line x1={125} y1={61} x2={175} y2={61} stroke={tone.accentDeep} strokeWidth="1.5" markerEnd={`url(#arrR8${seed})`}/>
-    <rect x={180} y={36} width={100} height={50} rx={8} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="1"/>
-    <text x={230} y={58} textAnchor="middle" fontSize="11" fontFamily="Pretendard" fontWeight="700" fill={tone.accentDeep}>{replacement}</text>
-    <text x={230} y={74} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={INK_SOFT}>{replacementSub}</text>
+    {/* 상자 폭 100→114: '같은 기능 · 안전한 형태'가 테두리에 닿지 않게 */}
+    <rect x={10} y={36} width={114} height={50} rx={8} fill="#FFF" stroke={tone.accentDeep} strokeWidth="1" strokeDasharray="4 3"/>
+    <text x={67} y={58} textAnchor="middle" fontSize="11" fontFamily="Pretendard" fontWeight="600" fill={tone.accentDeep}>{problem}</text>
+    <text x={67} y={74} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={INK_MUTE}>{problemSub}</text>
+    <line x1={128} y1={61} x2={172} y2={61} stroke={tone.accentDeep} strokeWidth="1.5" markerEnd={`url(#arrR8${seed})`}/>
+    <rect x={176} y={36} width={114} height={50} rx={8} fill={tone.accent} stroke={tone.accentDeep} strokeWidth="1"/>
+    <text x={233} y={58} textAnchor="middle" fontSize="11" fontFamily="Pretendard" fontWeight="700" fill={tone.accentDeep}>{replacement}</text>
+    <text x={233} y={74} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={INK_SOFT}>{replacementSub}</text>
     <text x={150} y={114} textAnchor="middle" fontSize="9" fontFamily="Pretendard" fill={INK_MUTE} letterSpacing="1">
       {caption}
     </text>
@@ -12644,11 +12645,23 @@ const ToneArtBase = ({ tone, kind, data, kwOnly }) => {
 // 예전엔 장마다 "전체 주제"로만 골라서, 주제가 AAC면 1·2·4·5장이 모두 같은 AAC 그림이 나왔음.
 // 이제 순서: ① 그 장의 글(제목+설명)에 맞는 도식 → ② 전체 주제에 맞는 도식 → ③ 장 종류(데이터·방법 등)에 맞는 도식
 // 앞 장에서 이미 쓴 도식은 건너뜀.
-const toneArtPick = (tone, kind, data, used) => {
+// 그 장의 글이 '딱 그 도식'을 직접 말하는 경우 (예: 설명에 "ABC로 짚어요", 제목이 "~때까지 기다립니다")
+// → 그 장이 그 도식을 갖고, 앞 장은 다른 도식을 씀
+const toneArtStrong = (tone, data) => {
+  const head = String(data?.head || '').replace(/\n/g, ' ');
+  const own = [data?.head, data?.sub].filter(Boolean).join(' ');
+  if (/ABC/.test(own) || /선행\s*사건.{0,12}결과/.test(own)) return <ABCDiagram tone={tone} data={data?.abc}/>;
+  if (/촉구\s*지연|시간\s*지연/.test(own) || /기다려|기다립|기다리기|먼저\s*(움직|말할|할\s*때)/.test(head)) return <PromptDelayTimer tone={tone} data={{ head: String(data?.head || '') }}/>;
+  if (/대체\s*행동/.test(own)) return <ReplacementDiagram tone={tone} data={data?.replacement}/>;
+  return null;
+};
+const toneArtPick = (tone, kind, data, used, reserved) => {
   const own = [data?.head, data?.sub].filter(Boolean).join(' ');
   const ownHead = String(data?.head || '').replace(/\n/g, ' ').trim();
   const cands = [];
   const add = (el) => { if (el) cands.push(el); };
+  const strong = kind === 'cta' ? null : toneArtStrong(tone, data);
+  add(strong);
   // 낱말 맞추기는 그 장의 '제목'으로 (긴 설명 문장엔 '확인·기록' 같은 흔한 말이 많아 엉뚱한 도식이 걸림)
   if (ownHead) add(ToneArtBase({ tone, kind, data: { ...data, userTopic: ownHead }, kwOnly: true }));
   if (data?.userTopic) add(ToneArtBase({ tone, kind, data, kwOnly: true }));
@@ -12672,7 +12685,8 @@ const toneArtPick = (tone, kind, data, used) => {
   for (let k = 1; k <= 6; k++) add(ToneArtBase({ tone, kind, data: { ...data, userTopic: '', head: String(data?.head || '') + '#' + k } }));
   if (!cands.length) return ToneArtBase({ tone, kind, data });
   if (kind === 'cta') return cands[0];
-  const fresh = cands.find(el => !used.has(el.type));
+  const fresh = cands.find(el => !used.has(el.type) && (el === strong || !(reserved && reserved.has(el.type))))
+    || cands.find(el => !used.has(el.type));
   return fresh || cands[0];
 };
 const ToneArt = ({ tone, kind, data }) => {
@@ -12682,15 +12696,27 @@ const ToneArt = ({ tone, kind, data }) => {
   const idx = Number.isInteger(data?.sceneIdx) ? data.sceneIdx : -1;
   try {
     const used = new Set();
+    // 뒤 장들이 글로 직접 부르는 도식 (그 장 몫으로 남겨 둠)
+    const reservedAfter = (k) => {
+      const r = new Set();
+      if (!sibs) return r;
+      for (let j = k + 1; j < sibs.length; j++) {
+        const sb = sibs[j] || {};
+        if (sb.kind === 'cta') continue;
+        const el = toneArtStrong(tone, { ...data, head: sb.head, sub: sb.sub });
+        if (el && el.type) r.add(el.type);
+      }
+      return r;
+    };
     if (sibs && idx > 0) {
       for (let k = 0; k < idx && k < sibs.length; k++) {
         const sb = sibs[k] || {};
         if (sb.kind === 'cta') continue;
-        const el = toneArtPick(tone, sb.kind, { ...data, head: sb.head, sub: sb.sub, siblings: null, sceneIdx: -1 }, used);
+        const el = toneArtPick(tone, sb.kind, { ...data, head: sb.head, sub: sb.sub, siblings: null, sceneIdx: -1 }, used, reservedAfter(k));
         if (el && el.type) used.add(el.type);
       }
     }
-    return toneArtPick(tone, kind, data, used);
+    return toneArtPick(tone, kind, data, used, sibs && idx >= 0 ? reservedAfter(idx) : null);
   } catch (e) {
     return ToneArtBase({ tone, kind, data });
   }
@@ -14282,6 +14308,8 @@ function dsDrawText(ctx, el, spec, st) {
     let cx = x;
     if (align === 'center') cx = x + (lay.maxW - line.w) / 2;
     else if (align === 'right') cx = x + lay.maxW - line.w;
+    // 1) 조각마다 자리·보이는 글자 계산 (타자 효과 반영)
+    const items = [];
     line.runs.forEach(run => {
       if (budget <= 0) return;
       let txt = countText(run.t);
@@ -14289,34 +14317,47 @@ function dsDrawText(ctx, el, spec, st) {
       if (chars.length > budget) txt = chars.slice(0, budget).join('');
       budget -= chars.length;
       const rw = dsMeasure(ctx, txt, lay.ls);
-      if (run.em && !/^\s+$/.test(txt)) {
-        const saveShadow = ctx.shadowColor;
-        if (hlStyle === 'marker') {
-          ctx.shadowColor = 'rgba(0,0,0,0)';
-          ctx.fillStyle = hlBg;
-          ctx.fillRect(cx - lay.size * 0.06, baseY - lay.size * 0.38, rw + lay.size * 0.12, lay.size * 0.46);
-          ctx.shadowColor = saveShadow;
-        } else if (hlStyle === 'box') {
-          ctx.shadowColor = 'rgba(0,0,0,0)';
-          ctx.fillStyle = hlBg;
-          dsRoundRect(ctx, cx - lay.size * 0.14, baseY - lay.size * 0.98, rw + lay.size * 0.28, lay.size * 1.22, lay.size * 0.18);
-          ctx.fill();
-          ctx.shadowColor = saveShadow;
-        }
-      }
+      items.push({ run, txt, cx, rw, sp: /^\s+$/.test(txt) });
+      cx += rw + lay.ls; // 조각 사이 자간 (줄 폭 계산과 맞춤)
+    });
+    // 2) 형광펜·상자: 한 줄에서 이어진 강조 낱말들은 한 덩어리로 칠함
+    //    (예전엔 낱말마다 따로 그려서 '고민'과 '중이신가요?' 상자 사이에 이음매가 보였음)
+    if (hlStyle === 'marker' || hlStyle === 'box') {
+      const groups = [];
+      let g = null;
+      items.forEach((it, k) => {
+        if (it.run.em && !it.sp) {
+          // 바로 앞이 같은 덩어리(사이에 띄어쓰기만 있음)면 이어 붙임
+          let j = k - 1;
+          while (j >= 0 && items[j].sp) j--;
+          if (g && j === g.last) { g.r = it.cx + it.rw; g.last = k; }
+          else { g = { l: it.cx, r: it.cx + it.rw, last: k }; groups.push(g); }
+        } else if (!it.sp) g = null;
+      });
+      const saveShadow = ctx.shadowColor;
+      ctx.shadowColor = 'rgba(0,0,0,0)';
+      ctx.fillStyle = hlBg;
+      groups.forEach(gr => {
+        const rw = gr.r - gr.l;
+        if (hlStyle === 'marker') ctx.fillRect(gr.l - lay.size * 0.06, baseY - lay.size * 0.38, rw + lay.size * 0.12, lay.size * 0.46);
+        else { dsRoundRect(ctx, gr.l - lay.size * 0.14, baseY - lay.size * 0.98, rw + lay.size * 0.28, lay.size * 1.22, lay.size * 0.18); ctx.fill(); }
+      });
+      ctx.shadowColor = saveShadow;
+    }
+    // 3) 글자
+    items.forEach(({ run, txt, cx: tx, rw }) => {
       // 강조 글자색: 형광펜·상자는 hlText(없으면 본문색), 색·밑줄은 강조색
       if (!run.em) ctx.fillStyle = color;
       else if (hlStyle === 'marker' || hlStyle === 'box') ctx.fillStyle = el.hlText ? dsColor(el.hlText, spec, color) : color;
       else ctx.fillStyle = hl;
       if (lay.ls) {
-        let px = cx;
+        let px = tx;
         for (const ch of dsChars(txt)) { ctx.fillText(ch, px, baseY); px += ctx.measureText(ch).width + lay.ls; }
-      } else ctx.fillText(txt, cx, baseY);
+      } else ctx.fillText(txt, tx, baseY);
       if (run.em && hlStyle === 'underline') {
         ctx.fillStyle = hl;
-        ctx.fillRect(cx, baseY + lay.size * 0.1, rw, Math.max(3, lay.size * 0.07));
+        ctx.fillRect(tx, baseY + lay.size * 0.1, rw, Math.max(3, lay.size * 0.07));
       }
-      cx += rw + lay.ls; // 조각 사이 자간 (줄 폭 계산과 맞춤)
     });
   });
   dsShadow(ctx, 0);
@@ -14743,6 +14784,27 @@ function dsNormalizeSpec(raw, center, photoCount, opts) {
       if (fromAI && (el.type === 'text' || el.type === 'pill') && Number(el.y) > DS_H - 330) el.y = DS_H - 330;
     });
     sc.els = sc.els.filter(el => !el.__drop);
+    // 그림 글자(이모지)가 왼쪽 정렬 글자의 첫머리에 붙거나 겹치면, 글자를 그림 오른쪽으로 조금 밀기 (AI 결과만)
+    // (예: 점선 상자 안 🌱 그림이 '정답은' 첫 글자에 닿아 있었음)
+    if (fromAI) sc.els.forEach(em => {
+      if (em.type !== 'emoji') return;
+      const es = Number(em.size) || 120, ex = Number(em.x) || 0, ey = Number(em.y) || 0;
+      const eR = ex + es * 1.15, eB = ey + es * 1.15;
+      sc.els.forEach(tx => {
+        if (tx.type !== 'text' || (tx.align && tx.align !== 'left')) return;
+        const ts = Number(tx.size) || 56, tX = Number(tx.x) || 0, tY = Number(tx.y) || 0;
+        const tW = Number(tx.w) || (DS_W - 2 * (tX || 90));
+        const tB = tY + ts * 2.6; // 첫 두 줄 높이쯤
+        const gap = ts * 0.3;
+        if (ex > tX + ts * 0.6 || eR + gap <= tX) return;      // 그림이 글 첫머리 근처가 아님 / 이미 떨어져 있음
+        if (eB <= tY || ey >= tB) return;                     // 위아래로 안 겹침
+        const shift = eR + gap - tX;
+        if (shift <= 0 || shift > tW * 0.35) return;          // 너무 많이 밀어야 하면 손대지 않음
+        tx.x = tX + shift;
+        if (tx.w != null) tx.w = Math.max(40, tW - shift);
+        else tx.w = Math.max(40, tW - shift);
+      });
+    });
     // 읽을 시간 보장: 마지막 요소가 다 나타난 뒤 최소 1.6초는 머물고, 글이 많으면 그만큼 더 길게
     // (AI가 장면 길이를 짧게 잡으면 글을 다 읽기 전에 넘어가 버렸음)
     let lastEnd = 0, chars = 0;
@@ -21317,7 +21379,8 @@ function ClinicalScene({ scene, sceneIndex, selectedField, setSelectedField, edi
       const txt = Array.from(el.querySelectorAll('svg text')).map(t => t.textContent || '').join(' ') || el.textContent || '';
       // 순서 번호(1·2·3, 01·02)는 빼고, 10 이상이거나 소수인 값만 셈
       const nums = (txt.match(/(?<![A-Za-z\d])\d+(?:\.\d+)?(?!\s*(?:m\b|개월|세|단어|단계|급|차))/g) || []).filter(n => /\./.test(n) || (Number(n) >= 10 && !/^0/.test(n)));
-      const v = /\d\s*%/.test(txt) || nums.length >= 3;
+      // 평가 점수 그림(VB-MAPP 등)은 한 자리 점수라도 실제 아이 결과처럼 보이므로 예시 안내를 붙임
+      const v = /\d\s*%/.test(txt) || nums.length >= 3 || (/VB-?MAPP|ABLLS|PEAK|점수|척도/i.test(txt) && /\d/.test(txt));
       if (v !== artHasNums) setArtHasNums(v);
     } catch (e) {}
   });
@@ -21971,7 +22034,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
           borderRadius: 22,
           zIndex: 0,
         }}/>
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           width: '100%',
           transform: 'rotate(-3deg)',
           zIndex: 2,
@@ -22415,7 +22478,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
           }}>?</div>
         )}
         {/* 큰 동그라미 번호 ① */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...scaleIn(0),
           width: 56, height: 56, borderRadius: '50%',
           background: theme.primary, color: '#fff',
@@ -22426,7 +22489,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
         {/* 큰 질문 */}
         <EditableText fieldKey="title" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(isShortScene ? 0 : 400),
             fontSize: Math.round(getHeadSize(scene.title, 'hook') * 1.4 * getFS('title')),
             fontWeight: 900, color: '#1a1a1a',
@@ -22440,7 +22503,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
             {scene.sub.split('\n').slice(0, 2).map((line, i) => (
               <EditableText key={i} fieldKey="sub" {...editProps}
                 element="div"
-                style={{
+                style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
                   ...fadeUp(800 + i * 200),
                   background: '#fff', borderRadius: 28,
                   padding: '14px 22px', marginBottom: 10,
@@ -22482,7 +22545,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
         {/* 큰 슬로건 */}
         <EditableText fieldKey="title" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(isShortScene ? 0 : 400),
             fontSize: Math.round(getHeadSize(scene.title, 'hook') * 1.3 * getFS('title')),
             fontWeight: 900, color: '#fff',
@@ -22495,7 +22558,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
         {checkLines.map((line, i) => (
           <EditableText key={i} fieldKey="sub" {...editProps}
             element="div"
-            style={{
+            style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
               ...fadeUp(800 + i * 200),
               background: 'rgba(255,255,255,0.95)',
               borderRadius: 18,
@@ -22549,14 +22612,14 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
           }}/>
         )}
         {/* 상단 캡션 */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...fadeIn(0),
           fontSize: 10, letterSpacing: 3, fontWeight: 800,
           color: theme.primary, marginBottom: 16, zIndex: 1,
           fontFamily: 'ui-monospace, "SF Mono", "Courier New", monospace',
         }}>DATA · REPORT</div>
         {/* 거대 숫자 */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...fadeUp(isShortScene ? 0 : 400),
           fontSize: 96, fontWeight: 900, color: theme.primary,
           lineHeight: 1, letterSpacing: '-0.04em',
@@ -22566,7 +22629,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
         {/* 본문 제목 */}
         <EditableText fieldKey="title" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(700),
             fontSize: Math.round(getHeadSize(scene.title, 'hook') * 1.0 * getFS('title')),
             fontWeight: 700, color: '#1a1a1a',
@@ -22578,7 +22641,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
         {scene.sub && (
           <EditableText fieldKey="sub" {...editProps}
             element="div"
-            style={{
+            style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
               ...fadeIn(1000),
               fontSize: Math.round(12.5 * getFS('sub')), fontWeight: 500, color: '#555',
               lineHeight: 1.7, marginBottom: 20,
@@ -22642,7 +22705,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
       </div>
       <EditableText fieldKey="title" {...editProps}
         element="div"
-        style={{
+        style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...fadeUp(isShortScene ? 0 : 600),
           fontSize: Math.round(getHeadSize(scene.title, 'hook') * eMul * getFS('title')),
           fontWeight: 900, color: txtColor, lineHeight: 1.4,
@@ -22654,7 +22717,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
         }}>
         {renderEmphasis(scene.title, hasImage ? '#FFE066' : theme.primary)}
       </EditableText>
-      <div style={{
+      <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
         ...fadeIn(1100),
         width: '40%', height: 2, background: hasImage ? '#fff' : theme.primary,
         marginBottom: 18, opacity: 0.85, zIndex: 1,
@@ -22662,7 +22725,7 @@ function HookScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
       {scene.sub && !isShortScene && (
         <EditableText fieldKey="sub" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(1300),
             fontSize: Math.round(13 * getFS('sub')), color: hasImage ? 'rgba(255,255,255,0.95)' : theme.textMute,
             lineHeight: 1.6, fontWeight: 400, letterSpacing: '0.02em',
@@ -22761,7 +22824,7 @@ function CheckItemScene({ scene, sceneIndex, selectedField, setSelectedField, ed
           letterSpacing: 6, marginBottom: 24,
         }}>STEP · {String(scene.index).padStart(2, '0')}</div>
         {/* 큰 ✓ 박스 (1개, 본문 = 체크 텍스트) */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...scaleIn(isShortScene ? 200 : 500),
           background: 'rgba(255,255,255,0.97)',
           borderRadius: 20,
@@ -22790,7 +22853,7 @@ function CheckItemScene({ scene, sceneIndex, selectedField, setSelectedField, ed
         </div>
         {/* 하단 카테고리 라벨 */}
         {scene.category && (
-          <div style={{
+          <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeIn(isShortScene ? 600 : 1100),
             marginTop: 18, padding: '5px 14px',
             background: 'rgba(255,255,255,0.2)', color: '#fff',
@@ -23183,7 +23246,7 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
           pointerEvents: 'none',
         }}/>
         {/* 상단 캡션 + 인덱스 */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...fadeIn(0),
           display: 'flex', justifyContent: 'space-between', alignItems: 'center',
           marginBottom: 18, zIndex: 1,
@@ -23202,7 +23265,7 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
         {/* 거대 숫자 */}
         <EditableText fieldKey="number" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...scaleIn(200),
             fontSize: Math.round(numSize * 1.1 * getFS('number')), fontWeight: 900,
             color: theme.primary,
@@ -23213,7 +23276,7 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
         {/* 라벨 */}
         <EditableText fieldKey="label" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(500),
             fontSize: Math.round(labelSize * 1.0 * getFS('label')), fontWeight: 700,
             color: '#1a1a1a',
@@ -23222,7 +23285,7 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
             marginBottom: 14, zIndex: 1,
           }}>{scene.label}</EditableText>
         {/* 가는 가로선 */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...fadeIn(800),
           width: 50, height: 2, background: theme.primary,
           marginBottom: 16, zIndex: 1,
@@ -23231,7 +23294,7 @@ function BigNumberScene({ scene, sceneIndex, selectedField, setSelectedField, ed
         {scene.desc && (
           <EditableText fieldKey="desc" {...editProps}
             element="div"
-            style={{
+            style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
               ...fadeIn(1000),
               fontSize: Math.round(12.5 * getFS('desc')), fontWeight: 500, color: '#555',
               lineHeight: 1.7,
@@ -23600,7 +23663,7 @@ function QuoteScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
         }}>QUOTE · {String(scene.index).padStart(2, '0')}</div>
         <EditableText fieldKey="text" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(isShortScene ? 200 : 600),
             fontSize: Math.round(textSize * 1.15 * getFS('text')), fontWeight: 700,
             lineHeight: 1.6, color: theme.text,
@@ -23612,7 +23675,7 @@ function QuoteScene({ scene, sceneIndex, selectedField, setSelectedField, editMo
         {scene.attribution && (
           <EditableText fieldKey="attribution" {...editProps}
             element="div"
-            style={{
+            style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
               ...fadeIn(isShortScene ? 700 : 1400),
               marginTop: 22, fontSize: Math.round(12 * getFS('attribution')), color: theme.textMute,
               letterSpacing: 1, zIndex: 2,
@@ -24155,7 +24218,7 @@ function CardScene({ scene, sceneIndex, selectedField, setSelectedField, editMod
           borderRadius: theme.radius.lg,
           padding: '28px 24px 30px',
           boxShadow: '0 20px 40px rgba(0,0,0,0.15)',
-          zIndex: 1,
+          position: 'relative', zIndex: 1, // 뒤 카드(분홍 네모)가 글자를 덮지 않게
         }}>
           {/* 큰 번호 */}
           <div style={{
@@ -24792,7 +24855,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           ))}
         </div>
         {/* 큰 동그라미 번호 */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...scaleIn(200),
           marginTop: 24,
           width: 64, height: 64, borderRadius: '50%',
@@ -24805,7 +24868,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         {/* 큰 질문 */}
         <EditableText fieldKey="question" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(isShortScene ? 400 : 800),
             fontSize: Math.round(qSize * 1.2 * getFS('question')), fontWeight: 900,
             lineHeight: 1.35, color: theme.text,
@@ -24816,7 +24879,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         {/* 답 — 채팅 박스 (1개로 합침) */}
         <EditableText fieldKey="answer" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(isShortScene ? 800 : 1400),
             background: '#fff', borderRadius: 24,
             padding: '18px 22px',
@@ -24869,7 +24932,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
           ))}
         </div>
         {/* 큰 동그라미 번호 */}
-        <div style={{
+        <div style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
           ...scaleIn(200),
           marginTop: 28,
           width: 60, height: 60, borderRadius: '50%',
@@ -24881,7 +24944,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         {/* 큰 질문 */}
         <EditableText fieldKey="question" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(isShortScene ? 400 : 800),
             fontSize: Math.round(qSize * 1.15 * getFS('question')), fontWeight: 900,
             lineHeight: 1.35, color: theme.text,
@@ -24891,7 +24954,7 @@ function QAScene({ scene, sceneIndex, selectedField, setSelectedField, editMode,
         {/* 채팅 박스 답변 */}
         <EditableText fieldKey="answer" {...editProps}
           element="div"
-          style={{
+          style={{ position: 'relative', /* 영상 저장 때 장식보다 위에 */
             ...fadeUp(isShortScene ? 800 : 1400),
             background: '#fff', borderRadius: 24,
             padding: '16px 22px',
