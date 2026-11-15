@@ -1058,6 +1058,12 @@ const callLLM = async (prompt) => {
 // 응답 처리(SSE/JSON 파싱)는 callLLM과 동일 — 프롬프트만 서버가 만든다는 점이 다름.
 const REELS_AI_URL = `https://${SUPABASE_PROJECT}.supabase.co/functions/v1/reels-ai`;
 const callReelsAI = async (payload) => {
+  // 릴스 AI는 원장님 전용 — 원장님 로그인 표(토큰)를 실어 보냄 (공개 열쇠로는 서버가 거절)
+  const userToken = await reelsGetAccessToken();
+  if (!userToken) {
+    reelsRelogin();
+    throw new Error('로그인 시간이 지났어요. 다시 로그인해 주세요.');
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), 90000);
   let response;
@@ -1066,7 +1072,8 @@ const callReelsAI = async (payload) => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Authorization': `Bearer ${SUPABASE_ANON_KEY}`,
+        'Authorization': `Bearer ${userToken}`,
+        'apikey': SUPABASE_ANON_KEY,
       },
       body: JSON.stringify({ ...payload, stream: false }),
       signal: controller.signal,
@@ -1077,6 +1084,12 @@ const callReelsAI = async (payload) => {
   if (!response.ok) {
     let errText = '';
     try { errText = await response.text(); } catch {}
+    if (response.status === 401) {
+      let msg = '로그인 시간이 지났어요. 다시 로그인해 주세요.';
+      try { const j = JSON.parse(errText); if (j && j.error) msg = j.error; } catch {}
+      reelsRelogin();
+      throw new Error(msg);
+    }
     throw new Error(`HTTP ${response.status}: ${errText.slice(0, 200)}`);
   }
   const contentType = response.headers.get('content-type') || '';
