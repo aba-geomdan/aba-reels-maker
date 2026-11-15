@@ -14948,6 +14948,33 @@ async function reelsGetAccessToken() {
   })();
   try { return await _reelsRefreshing; } finally { _reelsRefreshing = null; }
 }
+// 원장님 계정인지 서버에 물어봄: true / false / null(확인 실패)
+async function reelsIsAdmin(token) {
+  if (!token) return false;
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(`https://${SUPABASE_PROJECT}.supabase.co/rest/v1/rpc/is_admin`, {
+        method: 'POST',
+        headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}`, 'Content-Type': 'application/json' },
+        body: '{}',
+      });
+      if (r.status === 401 || r.status === 403) return false;
+      if (r.ok) return (await r.json()) === true;
+    } catch (e) {}
+    await new Promise((res) => setTimeout(res, 2000));
+  }
+  return null;
+}
+// 이 창의 로그인만 끝냄 (같은 계정의 다른 앱 로그인은 그대로)
+function reelsEndLogin(token) {
+  try {
+    if (token) fetch(`https://${SUPABASE_PROJECT}.supabase.co/auth/v1/logout?scope=local`, {
+      method: 'POST', headers: { 'apikey': SUPABASE_ANON_KEY, 'Authorization': `Bearer ${token}` },
+    }).catch(() => {});
+  } catch (e) {}
+  try { sessionStorage.removeItem('reels_session'); sessionStorage.removeItem('reels_authed'); } catch (e) {}
+}
+const REELS_ADMIN_ONLY = '릴스 메이커는 원장님 계정만 쓸 수 있습니다.';
 // 다시 로그인: 페이지를 새로 고치지 않고 작은 로그인 창만 띄움 → 만들던 릴스·사진이 그대로 남음
 function reelsRelogin() {
   try { window.dispatchEvent(new Event('reels-relogin')); } catch (e) {}
@@ -16027,6 +16054,21 @@ export default function ReelStudioV8() {
   const [authed, setAuthed] = useState(() => {
     try { return sessionStorage.getItem('reels_authed') === '1'; } catch { return false; }
   });
+  // 예전에 로그인해 둔 창도 다시 열 때 원장님 계정인지 확인 (아니면 로그인 화면으로)
+  useEffect(() => {
+    if (!authed) return;
+    let alive = true;
+    (async () => {
+      let token = null;
+      try { token = await reelsGetAccessToken(); } catch (e) { return; } // 인터넷 끊김이면 그대로 둠
+      const ok = token ? await reelsIsAdmin(token) : false;
+      if (!alive || ok === true || ok === null) return;
+      reelsEndLogin(token);
+      setLoginErr(token ? REELS_ADMIN_ONLY : '');
+      setAuthed(false);
+    })();
+    return () => { alive = false; };
+  }, []);
   const [loginId, setLoginId] = useState('');
   const [loginPw, setLoginPw] = useState('');
   const [loginErr, setLoginErr] = useState('');
@@ -16055,8 +16097,13 @@ export default function ReelStudioV8() {
       const out = await res.json();
       if (out && out.access_token && out.user) {
         const meta = out.user.user_metadata || {};
+        const adminOk = meta.is_active === false ? false : await reelsIsAdmin(out.access_token);
         if (meta.is_active === false) {
           setLoginErr('비활성화된 계정입니다.');
+        } else if (adminOk !== true) {
+          // 원장님 계정이 아니면 바로 로그인을 끝냄
+          reelsEndLogin(out.refresh_token ? out.access_token : null);
+          setLoginErr(adminOk === false ? REELS_ADMIN_ONLY : '원장님 계정인지 확인하지 못했습니다. 잠시 뒤 다시 눌러 주세요.');
         } else {
           setAuthed(true);
           try { sessionStorage.setItem('reels_authed', '1'); } catch {}
